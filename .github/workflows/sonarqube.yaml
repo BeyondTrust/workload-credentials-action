@@ -60,26 +60,16 @@ jobs:
 
   sonarqube:
     name: Sonarqube Analysis
-    runs-on: ubuntu-latest
     needs: [set-project-version, test]
     permissions:
       contents: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          fetch-depth: 0
-
-      - name: SonarQube Scan
-        uses: BeyondTrust/workflows/.github/workflows/sonarqube.yaml@51e9f52f8446a28edae9c7277ce1a612b86570ea # v4.13.1
-        secrets: inherit
-        with:
-          coverage_artifact: coverage-reports
-          coverage_artifact_path: coverage
-          required_coverage_files: coverage/lcov.info
-          extra_flags: >
-            -Dsonar.projectVersion=${{ needs.set-project-version.outputs.SONAR_PROJECT_VERSION }}
-            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
-            -Dsonar.qualitygate.wait=true
-        env:
-          SONAR_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
+    uses: BeyondTrust/workflows/.github/workflows/sonarqube.yaml@51e9f52f8446a28edae9c7277ce1a612b86570ea # v4.13.1
+    secrets: inherit
+    with:
+      coverage_artifact: coverage-reports
+      coverage_artifact_path: coverage
+      required_coverage_files: coverage/lcov.info
+      extra_flags: >
+        -Dsonar.projectVersion=${{ needs.set-project-version.outputs.SONAR_PROJECT_VERSION }}
+        -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+        -Dsonar.qualitygate.wait=true
