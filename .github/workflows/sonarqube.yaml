@@ -72,3 +72,4 @@ jobs:
         -Dsonar.projectVersion=${{ needs.set-project-version.outputs.SONAR_PROJECT_VERSION }}
         -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
       quality_gate_check: true
+    SONAR_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
