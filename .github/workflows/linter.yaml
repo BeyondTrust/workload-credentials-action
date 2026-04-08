@@ -25,7 +25,7 @@ jobs:
 
       # Set up Node
       - name: Set up Node
-        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version: 20.x
           registry-url: https://artifactory.dev.beyondtrust.com/artifactory/api/npm/npm/
@@ -43,7 +43,7 @@ jobs:
       # MegaLinter
       - name: MegaLinter
         id: ml
-        uses: oxsecurity/megalinter/flavors/javascript@42bb470545e359597e7f12156947c436e4e3fb9a # v9.3.0
+        uses: oxsecurity/megalinter/flavors/javascript@8fbdead70d1409964ab3d5afa885e18ee85388bb # v9.4.0
         env:
           VALIDATE_ALL_CODEBASE: ${{ inputs.full }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

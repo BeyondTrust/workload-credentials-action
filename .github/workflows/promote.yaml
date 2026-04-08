@@ -13,5 +13,5 @@ env:
 jobs:
   promote:
     name: Promote
-    uses: BeyondTrust/workflows/.github/workflows/promote-jfrog-build.yaml@f763ac02eea9579f402bcf3fc59b8ea7ad68e096 # v4.4.0
+    uses: BeyondTrust/workflows/.github/workflows/promote-jfrog-build.yaml@51e9f52f8446a28edae9c7277ce1a612b86570ea # v4.13.1
     secrets: inherit
