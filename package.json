@@ -1,8 +1,8 @@
 {
-  "name": "@beyondtrust/{{ template.name }}",
+  "name": "@beyondtrust/workload-credentials",
   "version": "0.0.0",
   "private": true,
-  "description": "{{ template.description }}",
+  "description": "A typescript action to get secrets from workload credentials",
   "scripts": {
     "build": "tsx ./build.ts",
     "format": "prettier --write \"**/*.{ts,yaml,yml}\"",
