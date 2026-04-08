@@ -1,8 +1,8 @@
 {
-  "name": "@beyondtrust/{{ template.name }}",
+  "name": "@beyondtrust/workload-credentials",
   "version": "0.0.0",
   "private": true,
-  "description": "{{ template.description }}",
+  "description": "A typescript action to get secrets from workload credentials",
   "scripts": {
     "build": "tsx ./build.ts",
     "format": "prettier --write \"**/*.{ts,yaml,yml}\"",
@@ -22,6 +22,8 @@
   },
   "devDependencies": {
     "@beyondtrust/prettier-configuration": "^1.0.1",
+    "@eslint/eslintrc": "^3.3.5",
+    "@eslint/js": "^10.0.1",
     "@types/jest": "^30.0.0",
     "@types/node": "^25.5.2",
     "@typescript-eslint/eslint-plugin": "^8.58.1",

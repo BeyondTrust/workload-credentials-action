@@ -59,11 +59,13 @@ jobs:
           path: coverage/
 
   sonarqube:
+    name: Sonarqube Analysis
     needs: [set-project-version, test]
     permissions:
       contents: read
     uses: BeyondTrust/workflows/.github/workflows/sonarqube.yaml@51e9f52f8446a28edae9c7277ce1a612b86570ea # v4.13.1
-    secrets: inherit
+    secrets:
+      SONARQUBE_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
     with:
       coverage_artifact: coverage-reports
       coverage_artifact_path: coverage
@@ -71,4 +73,4 @@ jobs:
       extra_flags: >
         -Dsonar.projectVersion=${{ needs.set-project-version.outputs.SONAR_PROJECT_VERSION }}
         -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
-      quality_gate_check: true
+        -Dsonar.qualitygate.wait=true

@@ -1,6 +1,6 @@
-name: '{{ template.name }}'
-description: '{{ template.description }}'
-author: BeyondTrust/{{ template.owner }}
+name: 'workload-credentials'
+description: 'A typescript action to get secrets from workload credentials'
+author: BeyondTrust/volt
 inputs: # Your inputs go here.
   message:
     description: |
