@@ -22,17 +22,17 @@
   },
   "devDependencies": {
     "@beyondtrust/prettier-configuration": "^1.0.1",
-    "@types/jest": "^29.5.14",
+    "@types/jest": "^30.0.0",
     "@types/node": "^24.0.1",
-    "@typescript-eslint/eslint-plugin": "^8.34.0",
+    "@typescript-eslint/eslint-plugin": "^8.58.1",
     "@typescript-eslint/parser": "^8.17.0",
     "eslint": "^9.28.0",
     "eslint-plugin-jest": "^28.13.3",
-    "jest": "^30.0.0",
+    "jest": "^30.3.0",
     "js-yaml": "^4.1.1",
-    "prettier": "^3.5.3",
-    "ts-jest": "^29.4.0",
-    "tsx": "^4.20.2",
+    "prettier": "^3.8.1",
+    "ts-jest": "^29.4.9",
+    "tsx": "^4.21.0",
     "typescript": "^5.8.3"
   },
   "prettier": "@beyondtrust/prettier-configuration"
