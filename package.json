@@ -18,7 +18,7 @@
   ],
   "author": "BeyondTrust",
   "dependencies": {
-    "@actions/core": "^1.11.1"
+    "@actions/core": "^3.0.0"
   },
   "devDependencies": {
     "@beyondtrust/prettier-configuration": "^1.0.1",
