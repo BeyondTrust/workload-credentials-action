@@ -1,56 +1,67 @@
-# GitHub Typescript Action
+# BeyondTrust Workload Credentials
 
-This is a base github action built using the github actions toolkit.
+Retrieve secrets from [BeyondTrust Secrets Safe](https://www.beyondtrust.com) directly in your GitHub Actions workflows — no stored credentials required.
 
-[GitHub Reference Project](https://github.com/actions/typescript-action)
+## Usage
 
-## Customization
+```yaml
+permissions:
+  id-token: write   # Required for OIDC token request
+  contents: read
 
-Update the template fields to name the action and set the ownership.
+steps:
+  - name: Retrieve database password
+    uses: BeyondTrust/workload-credentials@v1
+    id: secrets
+    with:
+      site-id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
+      secret-type: 'static'
+      secret-path: '/prod/db/password'
 
-```bash
-git checkout -b init-template-fields
-REPO=$(basename -s .git `git config --get remote.origin.url`)
-OWNER=myteamname
-DESCRIPTION="A typescript action to do workflow stuff programmatically"
-find . -type f -exec sed -i "s/{{ template\.name }}/$REPO/g" {} +
-find . -type f -exec sed -i "s/{{ template\.description }}/$DESCRIPTION/g" {} +
-find . -type f -exec sed -i "s/{{ template\.owner }}/$OWNER/g" {} +
-git add -u
-git commit -a -m "chore: initialize template fields"
-git push
+  - name: Use the secret
+    run: echo "Secret retrieved successfully"
+    env:
+      DB_PASSWORD: ${{ steps.secrets.outputs.secret }}
 ```
 
-## Development
+### Dynamic Secrets
 
-Install the dependencies
+```yaml
+steps:
+  - name: Generate temporary cloud credentials
+    uses: BeyondTrust/workload-credentials@v1
+    id: cloud-creds
+    with:
+      site-id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
+      secret-type: 'dynamic'
+      secret-path: '/prod/aws-creds'
 
-```bash
-npm install
+  - name: Use the credentials
+    run: echo "Temporary credentials generated"
+    env:
+      CLOUD_CREDS: ${{ steps.cloud-creds.outputs.secret }}
 ```
 
-Build the typescript and package it for distribution
+## Inputs
 
-```bash
-npm run build
-```
+| Name | Required | Description |
+|------|----------|-------------|
+| `site-id` | Yes | The BeyondTrust site ID (UUID). |
+| `secret-type` | Yes | The type of secret to retrieve. Must be `static` or `dynamic`. |
+| `secret-path` | Yes | The path to the secret in BeyondTrust Secrets Safe (e.g. `/prod/db/password`). |
 
-Run the tests :heavy_check_mark:
+## Outputs
 
-```bash
-$ npm test
-...
-```
+| Name | Description |
+|------|-------------|
+| `secret` | The retrieved secret value as a JSON string. The value is masked in workflow logs. |
 
-## Publish Artifacts
 
-**Actions are run from GitHub repos so we will check in the packed dist folder.**
+## Prerequisites
 
-Run [tsx](https://github.com/privatenumber/tsx) and push the results:
+- A BeyondTrust Workload Credentials instance with OIDC trust configured for your GitHub organization/repository/branch.
+- The `id-token: write` permission must be set in your workflow or job.
 
-```bash
-npm run build
-git add dist
-git commit -m "feat: cool new feature"
-git push origin feat/cool-new-feature
-```
+## License
+
+See [LICENSE](LICENSE) for details.

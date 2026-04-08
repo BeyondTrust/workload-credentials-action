@@ -2,13 +2,17 @@ import * as core from '@actions/core';
 import { setSecretOutput } from '../src/secret';
 
 describe('setSecretOutput', () => {
-  test('it should set a secret output', () => {
-    jest.spyOn(core, 'setSecret');
-    jest.spyOn(core, 'setOutput');
+  beforeEach(() => {
+    jest.restoreAllMocks();
+  });
 
-    setSecretOutput('foo', 'bar');
+  test('masks the value and sets the output', () => {
+    const setSecretSpy = jest.spyOn(core, 'setSecret').mockImplementation();
+    const setOutputSpy = jest.spyOn(core, 'setOutput').mockImplementation();
 
-    expect(core.setSecret).toHaveBeenCalled();
-    expect(core.setOutput).toHaveBeenCalled();
+    setSecretOutput('secret', 'super-secret-value');
+
+    expect(setSecretSpy).toHaveBeenCalledWith('super-secret-value');
+    expect(setOutputSpy).toHaveBeenCalledWith('secret', 'super-secret-value');
   });
 });

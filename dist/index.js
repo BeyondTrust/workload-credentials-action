@@ -19055,6 +19055,69 @@ function setOutput(name, value) {
   issueCommand("set-output", { name }, toCommandValue(value));
 }
 
+// src/client.ts
+var import_http_client = __toESM(require_lib());
+var API_BASE_URL = "https://beyondtrust.example.com";
+var API_PATH = "/secrets/api";
+var API_VERSION = "2026-02-16";
+var REQUEST_TIMEOUT_MS = 3e4;
+function parsePath(secretPath) {
+  const normalized = secretPath.replace(/\/+$/, "");
+  const lastSlash = normalized.lastIndexOf("/");
+  if (lastSlash === -1) {
+    return { folder: "", name: normalized };
+  }
+  return {
+    folder: normalized.substring(0, lastSlash),
+    name: normalized.substring(lastSlash + 1)
+  };
+}
+async function fetchSecret(oidcToken, siteId, secretType, secretPath) {
+  const client = new import_http_client.HttpClient("beyondtrust-workload-credentials", [], {
+    headers: {
+      Authorization: `Bearer ${oidcToken}`,
+      Accept: "application/json",
+      "bt-secrets-api-version": API_VERSION
+    },
+    socketTimeout: REQUEST_TIMEOUT_MS
+  });
+  try {
+    const { folder, name } = parsePath(secretPath);
+    const url = buildUrl(siteId, secretType, name, folder);
+    const response = secretType === "static" ? await client.get(url) : await client.post(url, "");
+    const statusCode = response.message.statusCode ?? 0;
+    const body = await response.readBody();
+    if (statusCode !== 200 && statusCode !== 201) {
+      throw new Error(`BeyondTrust API returned HTTP ${statusCode}`);
+    }
+    let result;
+    try {
+      result = JSON.parse(body);
+    } catch {
+      throw new Error("BeyondTrust API returned an invalid JSON response");
+    }
+    if (!result.secret || typeof result.secret !== "object") {
+      throw new Error(
+        "BeyondTrust API response did not contain a secret value"
+      );
+    }
+    return JSON.stringify(result.secret);
+  } finally {
+    client.dispose();
+  }
+}
+function buildUrl(siteId, secretType, name, folder) {
+  const encodedName = encodeURIComponent(name);
+  const base = `${API_BASE_URL}/${encodeURIComponent(siteId)}${API_PATH}`;
+  const path = secretType === "static" ? `${base}/static/${encodedName}` : `${base}/dynamic/${encodedName}/generate`;
+  const params = new URLSearchParams();
+  if (folder) {
+    params.set("folder", folder);
+  }
+  const query = params.toString();
+  return query ? `${path}?${query}` : path;
+}
+
 // src/secret.ts
 function setSecretOutput(name, value) {
   setSecret(value);
@@ -19070,6 +19133,33 @@ function run() {
   setSecretOutput("secretMessage", message);
   console.log(`VERSION: ${LIB_VERSION}`);
 }
+async function run() {
+  try {
+    (0, import_core2.info)(`workload-credentials v${LIB_VERSION}`);
+    const siteId = (0, import_core2.getInput)("site-id", { required: true });
+    const secretType = (0, import_core2.getInput)("secret-type", { required: true });
+    const secretPath = (0, import_core2.getInput)("secret-path", { required: true });
+    if (!isValidSecretType(secretType)) {
+      throw new Error(
+        `Invalid secret-type: "${secretType}". Must be one of: ${VALID_SECRET_TYPES.join(", ")}`
+      );
+    }
+    (0, import_core2.info)("Requesting OIDC token from GitHub...");
+    const oidcToken = await (0, import_core2.getIDToken)();
+    (0, import_core2.info)("Fetching secret from BeyondTrust...");
+    const secret = await fetchSecret(oidcToken, siteId, secretType, secretPath);
+    setSecretOutput("secret", secret);
+    (0, import_core2.info)("Secret retrieved successfully.");
+  } catch (error) {
+    if (error instanceof Error) {
+      (0, import_core2.setFailed)(error.message);
+    } else {
+      (0, import_core2.setFailed)("An unexpected error occurred");
+    }
+  }
+}
+
+// src/index.ts
 run();
 /*! Bundled license information:
 
