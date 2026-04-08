@@ -14,6 +14,6 @@ jobs:
       contents: write
     steps:
       - name: Publish SBOM as release assest
-        uses: BeyondTrust/publish-xray-sbom@0df68e6ef0255ddc6c89327933a206ff64a7563d # v2.0.1
+        uses: BeyondTrust/publish-xray-sbom@b788a3e12084398c2f0af5e682c32bebe3a29296 # v2.1.0
         with:
           jfrog-access-token: ${{ secrets.JFROG_RT_READ_XRAY }}

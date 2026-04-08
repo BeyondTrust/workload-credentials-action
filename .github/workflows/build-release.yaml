@@ -33,12 +33,12 @@ jobs:
             core.setOutput("version", version);
 
       - name: Setup Node
-        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version: 20
 
       - name: Setup JFrog
-        uses: beyondtrust/setup-jfrog-cli@f65e699ff079509e134bd371d06c1a169d8d5e93 # v2.2.3
+        uses: beyondtrust/setup-jfrog-cli@26d84636538c322aed2f822374a0b976b23caa81 # v2.4.3
         id: configure
 
       - name: Configure JFrog
@@ -52,10 +52,10 @@ jobs:
         run: npm run all
 
       - name: Scan Vulnerabilities
-        uses: beyondtrust/dependency-vulnerability-scan@0e58f5442951e3f776977f83b1f5724449c92ca3 # v3.0.6
+        uses: beyondtrust/dependency-vulnerability-scan@f263be345e51426f77ca2a8fc73c8b481d3e5062 # v3.0.9
 
       - name: Audit
-        uses: beyondtrust/security-validation-action@16ac878ad752b80d49818c2b9e7b2d583b0dd0f2 # v2.0.2
+        uses: beyondtrust/security-validation-action@6a9cc1a4f0e5cc4650e3423430cfb56942f6bd7e # v2.2.0
 
       - name: Publish
         run: |
