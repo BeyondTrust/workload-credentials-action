@@ -7,7 +7,7 @@
 # 3. PRs touching any code with a codeowner must be signed off by at least one
 #    person on the codeowner team.
 
-* @beyondtrust/{{ template.owner }}
+* @beyondtrust/volt
 
 # BeyondTrust Global Codeowners
 # DO NOT MODIFY BELOW THIS LINE
