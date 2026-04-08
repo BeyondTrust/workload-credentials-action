@@ -1,0 +1,10 @@
+{
+  "packages": {
+    ".": {
+      "release-type": "node",
+      "extra-files": ["src/version.ts", "dist/index.js"]
+    }
+  },
+  "include-component-in-tag": false,
+  "always-update": true
+}

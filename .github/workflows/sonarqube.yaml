@@ -1,0 +1,74 @@
+name: SonarQube Scan
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: none
+
+jobs:
+  set-project-version:
+    if: ${{ github.actor != 'dependabot[bot]' }}
+    name: Set Project Version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      SONAR_PROJECT_VERSION: ${{ steps.set_version.outputs.SONAR_PROJECT_VERSION }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set project version
+        id: set_version
+        run: |
+          VERSION="$(jq -r '."."' .release-please-manifest.json)"
+          echo "SONAR_PROJECT_VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set Node.js 20.x
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: 20.x
+          registry-url: https://artifactory.dev.beyondtrust.com/artifactory/api/npm/npm/
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.JFROG_READONLY_PLAIN_ACCESS_TOKEN }}
+
+      - name: Run tests with coverage
+        run: npm test -- --coverage
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: coverage-reports
+          path: coverage/
+
+  sonarqube:
+    needs: [set-project-version, test]
+    permissions:
+      contents: read
+    uses: BeyondTrust/workflows/.github/workflows/sonarqube.yaml@51e9f52f8446a28edae9c7277ce1a612b86570ea # v4.13.1
+    secrets: inherit
+    with:
+      coverage_artifact: coverage-reports
+      coverage_artifact_path: coverage
+      required_coverage_files: coverage/lcov.info
+      extra_flags: >
+        -Dsonar.projectVersion=${{ needs.set-project-version.outputs.SONAR_PROJECT_VERSION }}
+        -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+      quality_gate_check: true

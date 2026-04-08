@@ -1,0 +1,11 @@
+exclude = [
+    '^https://artifactory\.dev\.beyondtrust\.com',
+    '^https://beyondtrust\.jfrog\.io',
+    '^https://github.com/BeyondTrust',
+]
+
+exclude_path = [
+    "CHANGELOG.md",
+    "test",
+    "package.json"
+]

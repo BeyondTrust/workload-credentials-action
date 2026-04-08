@@ -1,0 +1,22 @@
+name: Full Lint
+
+on:
+  pull_request:
+    # if any of the linter workflows have changed (e.g. dependabot PR), lint the full code base
+    # to ensure we do not accumulate unknown linter tech-debt
+    paths:
+      - .github/workflows/lint*.yaml
+      - eslint.config.mjs
+
+permissions: {}
+
+jobs:
+  lint:
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+    uses: ./.github/workflows/linter.yaml
+    secrets: inherit
+    with:
+      full: true

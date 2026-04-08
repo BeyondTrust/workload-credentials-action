@@ -1,0 +1,66 @@
+name: 'Build'
+
+on:
+  pull_request:
+    branches:
+      - master
+
+permissions:
+  contents: none
+
+env:
+  TARGET_REPOSITORY: eng-generic-qa-local
+  TARGET_PATH: beyondtrust/devx/actions
+  TARGET_NAME: '{{ template.name }}'
+
+jobs:
+  build-test:
+    if: ${{ github.actor == 'beyondtrust-release-app[bot]' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Determine version
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        id: version
+        with:
+          script: |
+            const version = require("./package.json").version
+            core.setOutput("version", version);
+
+      - name: Setup Node
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: 20
+
+      - name: Setup JFrog
+        uses: beyondtrust/setup-jfrog-cli@f65e699ff079509e134bd371d06c1a169d8d5e93 # v2.2.3
+        id: configure
+
+      - name: Configure JFrog
+        run: |
+          echo "JFROG_CLI_BUILD_NUMBER=${{ steps.version.outputs.version }}-${{ github.run_number }}" >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        run: jf npm ci --ignore-scripts
+
+      - name: Build and Package
+        run: npm run all
+
+      - name: Scan Vulnerabilities
+        uses: beyondtrust/dependency-vulnerability-scan@0e58f5442951e3f776977f83b1f5724449c92ca3 # v3.0.6
+
+      - name: Audit
+        uses: beyondtrust/security-validation-action@16ac878ad752b80d49818c2b9e7b2d583b0dd0f2 # v2.0.2
+
+      - name: Publish
+        run: |
+          jf rt u "*" "${{ env.TARGET_REPOSITORY }}/${{ env.TARGET_PATH }}/${{env.TARGET_NAME }}_${{ env.JFROG_CLI_BUILD_NUMBER }}.zip" --archive zip
+          jf rt build-add-git
+          jf rt build-collect-env
+          jf rt build-publish ${{ env.JFROG_CLI_BUILD_NAME }} ${{ env.JFROG_CLI_BUILD_NUMBER }}
+        working-directory: dist

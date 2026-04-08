@@ -1,0 +1,59 @@
+name: Linter checks
+
+on:
+  workflow_call:
+    inputs:
+      full:
+        description: 'To run a full repository scan or not'
+        required: true
+        type: boolean
+
+permissions: {}
+
+jobs:
+  megalinter:
+    name: MegaLinter
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+    steps:
+      # Git Checkout
+      - name: Checkout Code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Set up Node
+      - name: Set up Node
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: 20.x
+          registry-url: https://artifactory.dev.beyondtrust.com/artifactory/api/npm/npm/
+
+      # Install Prettier Package
+      - name: Install Dependencies
+        run: |
+          mv package.json _package.json
+          npm i --production=false --no-package-lock --no-audit --no-save @beyondtrust/prettier-configuration
+          mv _package.json package.json
+          sed -i "s/{{ template\.name }}/test/g" package.json # Only required in the template repository.
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.JFROG_READONLY_PLAIN_ACCESS_TOKEN }}
+
+      # MegaLinter
+      - name: MegaLinter
+        id: ml
+        uses: oxsecurity/megalinter/flavors/javascript@42bb470545e359597e7f12156947c436e4e3fb9a # v9.3.0
+        env:
+          VALIDATE_ALL_CODEBASE: ${{ inputs.full }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Upload MegaLinter artifacts
+      - name: Archive production artifacts
+        if: ${{ success() || failure() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: MegaLinter reports
+          path: |
+            megalinter-reports
+            mega-linter.log

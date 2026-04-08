@@ -1,0 +1,21 @@
+name: Shallow Lint
+
+on:
+  pull_request:
+    # Do not lint the full codebase if the linter workflows have not been updated
+    paths-ignore:
+      - .github/workflows/lint*.yaml
+      - eslint.config.mjs
+
+permissions: {}
+
+jobs:
+  lint:
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+    uses: ./.github/workflows/linter.yaml
+    secrets: inherit
+    with:
+      full: false

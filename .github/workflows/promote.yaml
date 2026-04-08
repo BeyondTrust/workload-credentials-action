@@ -1,0 +1,17 @@
+name: Promote Release Candidate
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: none
+
+env:
+  TARGET_REPOSITORY: eng-generic-prod-local
+
+jobs:
+  promote:
+    name: Promote
+    uses: BeyondTrust/workflows/.github/workflows/promote-jfrog-build.yaml@f763ac02eea9579f402bcf3fc59b8ea7ad68e096 # v4.4.0
+    secrets: inherit

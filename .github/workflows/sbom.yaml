@@ -1,0 +1,19 @@
+name: Publish SBOM
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: none
+
+jobs:
+  sbom:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish SBOM as release assest
+        uses: BeyondTrust/publish-xray-sbom@0df68e6ef0255ddc6c89327933a206ff64a7563d # v2.0.1
+        with:
+          jfrog-access-token: ${{ secrets.JFROG_RT_READ_XRAY }}
