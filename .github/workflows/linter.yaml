@@ -10,9 +10,6 @@ on:
 
 permissions: {}
 
-env:
-  SONAR_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
-
 jobs:
   megalinter:
     name: MegaLinter
