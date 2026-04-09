@@ -20010,9 +20010,7 @@ async function run() {
     if (secretKey) {
       const parsed = JSON.parse(secret);
       if (!(secretKey in parsed)) {
-        throw new Error(
-          `secret-key "${secretKey}" not found in the secret object.`
-        );
+        throw new Error(`secret-key "${secretKey}" not found in the secret object.`);
       }
       setSecretOutput("secret", String(parsed[secretKey]));
     } else {
