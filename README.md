@@ -93,7 +93,7 @@ steps:
 
 | Name | Description |
 |------|-------------|
-| `secret` | The retrieved secret value as a JSON string. The value is masked in workflow logs. |
+| `secret` | The retrieved secret value. Returns a JSON string by default, or a single value if `secret-key` is specified. The value is masked in workflow logs. |
 
 
 ## License
