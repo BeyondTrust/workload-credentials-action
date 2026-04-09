@@ -1,10 +1,6 @@
 import { HttpClient } from '@actions/http-client';
 
-// TODO: Replace with the actual BeyondTrust Secrets Safe API base URL.
-const API_BASE_URL = 'https://beyondtrust.example.com';
-
 const API_PATH = '/secrets/api';
-const API_VERSION = '2026-02-16';
 const REQUEST_TIMEOUT_MS = 30_000;
 
 interface SecretsResponse {
@@ -27,27 +23,27 @@ export function parsePath(secretPath: string): { folder: string; name: string } 
 
 export async function fetchSecret(
   oidcToken: string,
+  apiBaseUrl: string,
+  apiVersion: string,
   siteId: string,
   secretType: 'static' | 'dynamic',
-  secretPath: string
+  secretPath: string,
 ): Promise<string> {
   const client = new HttpClient('beyondtrust-workload-credentials', [], {
     headers: {
       Authorization: `Bearer ${oidcToken}`,
       Accept: 'application/json',
-      'bt-secrets-api-version': API_VERSION,
+      'Content-Type': 'application/json',
+      'bt-secrets-api-version': apiVersion,
     },
     socketTimeout: REQUEST_TIMEOUT_MS,
   });
 
   try {
     const { folder, name } = parsePath(secretPath);
-    const url = buildUrl(siteId, secretType, name, folder);
+    const url = buildUrl(apiBaseUrl, siteId, secretType, name, folder);
 
-    const response =
-      secretType === 'static'
-        ? await client.get(url)
-        : await client.post(url, '');
+    const response = secretType === 'static' ? await client.get(url) : await client.post(url, '');
 
     const statusCode = response.message.statusCode ?? 0;
     const body = await response.readBody();
@@ -64,9 +60,7 @@ export async function fetchSecret(
     }
 
     if (!result.secret || typeof result.secret !== 'object') {
-      throw new Error(
-        'BeyondTrust API response did not contain a secret value'
-      );
+      throw new Error('BeyondTrust API response did not contain a secret value');
     }
 
     return JSON.stringify(result.secret);
@@ -76,18 +70,16 @@ export async function fetchSecret(
 }
 
 function buildUrl(
+  apiBaseUrl: string,
   siteId: string,
   secretType: 'static' | 'dynamic',
   name: string,
-  folder: string
+  folder: string,
 ): string {
   const encodedName = encodeURIComponent(name);
-  const base = `${API_BASE_URL}/${encodeURIComponent(siteId)}${API_PATH}`;
+  const base = `${apiBaseUrl}/site/${encodeURIComponent(siteId)}${API_PATH}`;
 
-  const path =
-    secretType === 'static'
-      ? `${base}/static/${encodedName}`
-      : `${base}/dynamic/${encodedName}/generate`;
+  const path = secretType === 'static' ? `${base}/static/${encodedName}` : `${base}/dynamic/${encodedName}/generate`;
 
   const params = new URLSearchParams();
   if (folder) {

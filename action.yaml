@@ -2,6 +2,14 @@ name: 'workload-credentials'
 description: 'A typescript action to get secrets from BeyondTrust workload credentials'
 author: BeyondTrust/volt
 inputs:
+  api-base-url:
+    description: 'The BeyondTrust API base URL.'
+    required: false
+    default: 'https://api.beyondtrust.io'
+  api-version:
+    description: 'The BeyondTrust API version.'
+    required: false
+    default: '2026-02-16'
   site-id:
     description: 'The BeyondTrust site ID (UUID).'
     required: true
@@ -9,8 +17,11 @@ inputs:
     description: 'The type of secret to retrieve. Must be "static" or "dynamic".'
     required: true
   secret-path:
-    description: 'The path to the secret in BeyondTrust Secrets Safe.'
+    description: 'The path to the secret in BeyondTrust Workload Credentials.'
     required: true
+  secret-key:
+    description: 'Extract a single value from the secret JSON by key. If omitted, the full JSON object is returned.'
+    required: false
 outputs:
   secret:
     description: 'The retrieved secret value.'
