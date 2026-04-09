@@ -160,9 +160,7 @@ describe('run', () => {
 
     await run();
 
-    expect(mockedCore.setFailed).toHaveBeenCalledWith(
-      'secret-key "missing" not found in the secret object.'
-    );
+    expect(mockedCore.setFailed).toHaveBeenCalledWith('secret-key "missing" not found in the secret object.');
   });
 
   test('calls setFailed when the API client throws', async () => {
