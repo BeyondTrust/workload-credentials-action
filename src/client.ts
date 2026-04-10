@@ -1,6 +1,6 @@
 import { HttpClient } from '@actions/http-client';
 
-const API_PATH = '/secrets/api';
+const API_PATH = '/secrets';
 const REQUEST_TIMEOUT_MS = 30_000;
 
 interface SecretsResponse {
