@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  build: # make sure build/ci work properly
+  build-and-test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -30,18 +30,3 @@ jobs:
       - name: Lint, Test, Build, Package
         run: |
           npm run all
-
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-
-      # TODO: enable a test job when OIDC token exchange is implemented.
-      # - name: Run Action
-      #   uses: ./
-      #   with:
-      #     site-id: "d6878b18-039a-4011-a1e4-a4523dbd4837"
-      #.    secret-type: "static"
-      #     secret-path: "/action/test"
