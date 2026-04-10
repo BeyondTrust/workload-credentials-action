@@ -56,6 +56,10 @@ prod/db/connection host
     expect(() => parseSecretInput('prod/db/password key extra', 'static')).toThrow('Invalid static secret entry');
   });
 
+  test('throws on multiple pipe separators', () => {
+    expect(() => parseSecretInput('prod/app key | ALIAS | extra', 'static')).toThrow('Too many "|" separators');
+  });
+
   test('throws on invalid path', () => {
     expect(() => parseSecretInput('invalid!path key', 'static')).toThrow('Invalid secret path');
   });
@@ -85,9 +89,14 @@ describe('run', () => {
     mockedClient.createClient.mockReturnValue({ dispose: jest.fn() } as never);
   });
 
+  const DEFAULT_INPUTS: Record<string, string> = {
+    'api-base-url': 'https://api.beyondtrust.io',
+    'api-version': '2026-02-16',
+  };
+
   function setupInputs(inputs: Record<string, string>) {
     mockedCore.getInput.mockImplementation((name: string) => {
-      return inputs[name] ?? '';
+      return inputs[name] ?? DEFAULT_INPUTS[name] ?? '';
     });
   }
 
@@ -199,6 +208,24 @@ prod/db/creds password`,
     expect(mockedCore.setFailed).not.toHaveBeenCalled();
   });
 
+  test('serializes nested objects as JSON', async () => {
+    setupInputs({
+      'site-id': SITE_ID,
+      static: 'prod/app config',
+    });
+    mockedCore.getIDToken.mockResolvedValue('token');
+    mockedClient.fetchSecret.mockResolvedValue({ config: { host: 'localhost', port: 5432 } });
+
+    await run();
+
+    expect(mockedSecret.setSecretOutput).toHaveBeenCalledWith(
+      'config',
+      'CONFIG',
+      JSON.stringify({ host: 'localhost', port: 5432 }),
+    );
+    expect(mockedCore.setFailed).not.toHaveBeenCalled();
+  });
+
   test('rejects non-HTTPS api-base-url', async () => {
     setupInputs({
       'api-base-url': 'http://insecure.example.com',
@@ -233,6 +260,68 @@ prod/db/creds password`,
 
     expect(mockedCore.setFailed).toHaveBeenCalledWith('At least one static or dynamic secret must be specified.');
     expect(mockedCore.getIDToken).not.toHaveBeenCalled();
+  });
+
+  test('rejects duplicate output names', async () => {
+    setupInputs({
+      'site-id': SITE_ID,
+      static: `prod/db/creds password | DB_PASS
+prod/redis/creds password | DB_PASS`,
+    });
+    mockedCore.getIDToken.mockResolvedValue('token');
+    mockedClient.fetchSecret.mockResolvedValue({ password: 'secret' });
+
+    await run();
+
+    expect(mockedCore.setFailed).toHaveBeenCalledWith('Duplicate output name "DB_PASS". Each output must be unique.');
+    expect(mockedSecret.setSecretOutput).not.toHaveBeenCalled();
+  });
+
+  test('rejects duplicate output names without alias', async () => {
+    setupInputs({
+      'site-id': SITE_ID,
+      static: 'prod/db/creds password',
+      dynamic: 'prod/aws/creds password',
+    });
+    mockedCore.getIDToken.mockResolvedValue('token');
+    mockedClient.fetchSecret.mockResolvedValue({ password: 'secret' });
+
+    await run();
+
+    expect(mockedCore.setFailed).toHaveBeenCalledWith('Duplicate output name "password". Each output must be unique.');
+    expect(mockedSecret.setSecretOutput).not.toHaveBeenCalled();
+  });
+
+  test('rejects wildcard collision with explicit entry', async () => {
+    setupInputs({
+      'site-id': SITE_ID,
+      static: `prod/app *
+prod/other password`,
+    });
+    mockedCore.getIDToken.mockResolvedValue('token');
+    mockedClient.fetchSecret
+      .mockResolvedValueOnce({ password: 'from-app', apiKey: 'sk-123' })
+      .mockResolvedValueOnce({ password: 'from-other' });
+
+    await run();
+
+    expect(mockedCore.setFailed).toHaveBeenCalledWith('Duplicate output name "password". Each output must be unique.');
+    expect(mockedSecret.setSecretOutput).not.toHaveBeenCalled();
+  });
+
+  test('rejects wildcard collision across paths', async () => {
+    setupInputs({
+      'site-id': SITE_ID,
+      static: `prod/app *
+prod/other *`,
+    });
+    mockedCore.getIDToken.mockResolvedValue('token');
+    mockedClient.fetchSecret.mockResolvedValueOnce({ sharedKey: 'val1' }).mockResolvedValueOnce({ sharedKey: 'val2' });
+
+    await run();
+
+    expect(mockedCore.setFailed).toHaveBeenCalledWith('Duplicate output name "sharedKey". Each output must be unique.');
+    expect(mockedSecret.setSecretOutput).not.toHaveBeenCalled();
   });
 
   test('rejects when key is not found in secret object', async () => {

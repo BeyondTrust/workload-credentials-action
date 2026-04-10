@@ -20,7 +20,11 @@ export function parseSecretInput(input: string, secretType: 'static' | 'dynamic'
     .map((line) => line.trim())
     .filter((line) => line.length > 0)
     .map((line) => {
-      const [left, alias] = line.split('|').map((s) => s.trim());
+      const segments = line.split('|').map((s) => s.trim());
+      if (segments.length > 2) {
+        throw new Error(`Invalid ${secretType} secret entry: "${line}". Too many "|" separators.`);
+      }
+      const [left, alias] = segments;
       const parts = left.split(/\s+/);
       if (parts.length !== 2) {
         throw new Error(`Invalid ${secretType} secret entry: "${line}". Expected format: <path> <key> [| <alias>]`);
@@ -36,12 +40,18 @@ export function parseSecretInput(input: string, secretType: 'static' | 'dynamic'
     });
 }
 
+function toStringValue(val: unknown): string {
+  if (val === null || val === undefined) return '';
+  if (typeof val === 'object') return JSON.stringify(val);
+  return String(val);
+}
+
 export async function run(): Promise<void> {
   try {
     info(`workload-credentials v${LIB_VERSION}`);
 
-    const apiBaseUrl = getInput('api-base-url') || 'https://api.beyondtrust.io';
-    const apiVersion = getInput('api-version') || '2026-02-16';
+    const apiBaseUrl = getInput('api-base-url');
+    const apiVersion = getInput('api-version');
     const siteId = getInput('site-id', { required: true });
     const staticInput = getInput('static');
     const dynamicInput = getInput('dynamic');
@@ -77,30 +87,46 @@ export async function run(): Promise<void> {
     const cache = new Map<string, Record<string, unknown>>();
 
     try {
+      // Phase 1: Fetch all secrets and validate keys
       for (const req of requests) {
         const cacheKey = `${req.secretType}:${req.path}`;
-        let parsed = cache.get(cacheKey);
-
-        if (!parsed) {
+        if (!cache.has(cacheKey)) {
           info(`Fetching ${req.secretType} secret: ${req.path}`);
-          parsed = await fetchSecret(client, apiBaseUrl, siteId, req.secretType, req.path);
-          cache.set(cacheKey, parsed);
+          cache.set(cacheKey, await fetchSecret(client, apiBaseUrl, siteId, req.secretType, req.path));
         }
 
+        const parsed = cache.get(cacheKey)!;
+        if (req.key !== '*' && !(req.key in parsed)) {
+          throw new Error(`Key "${req.key}" not found in secret at "${req.path}".`);
+        }
+      }
+
+      // Check for duplicate output names (including wildcard expansions)
+      const outputNames = new Set<string>();
+      for (const req of requests) {
+        const names = req.key === '*' ? Object.keys(cache.get(`${req.secretType}:${req.path}`)!) : [req.outputName];
+
+        for (const name of names) {
+          if (outputNames.has(name)) {
+            throw new Error(`Duplicate output name "${name}". Each output must be unique.`);
+          }
+          outputNames.add(name);
+        }
+      }
+
+      // Phase 2: Export all outputs (only reached if all fetches and validations succeed)
+      for (const req of requests) {
+        const parsed = cache.get(`${req.secretType}:${req.path}`)!;
+
         if (req.key === '*') {
+          const keys = Object.keys(parsed);
+          info(`Wildcard export from "${req.path}": ${keys.join(', ')}`);
           for (const [key, val] of Object.entries(parsed)) {
-            const value = String(val);
-            const envName = key.toUpperCase();
-            setSecretOutput(key, envName, value);
+            setSecretOutput(key, key.toUpperCase(), toStringValue(val));
           }
         } else {
-          if (!(req.key in parsed)) {
-            throw new Error(`Key "${req.key}" not found in secret at "${req.path}".`);
-          }
-
-          const value = String(parsed[req.key]);
-          const envName = req.outputName.toUpperCase();
-          setSecretOutput(req.outputName, envName, value);
+          const value = toStringValue(parsed[req.key]);
+          setSecretOutput(req.outputName, req.outputName.toUpperCase(), value);
         }
       }
 
