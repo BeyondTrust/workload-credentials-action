@@ -19914,7 +19914,7 @@ function getIDToken(aud) {
 }
 
 // src/client.ts
-var API_PATH = "/secrets/api";
+var API_PATH = "/secrets";
 var REQUEST_TIMEOUT_MS = 3e4;
 function parsePath(secretPath) {
   const normalized = secretPath.replace(/\/+$/, "");
@@ -19932,7 +19932,6 @@ function createClient(oidcToken, apiVersion) {
     headers: {
       Authorization: `Bearer ${oidcToken}`,
       Accept: "application/json",
-      "Content-Type": "application/json",
       "bt-secrets-api-version": apiVersion
     },
     socketTimeout: REQUEST_TIMEOUT_MS
