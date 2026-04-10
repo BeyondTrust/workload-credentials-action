@@ -13,7 +13,6 @@ function mockHttpResponse(statusCode: number, body: string) {
   };
 
   MockedHttpClient.prototype.get.mockResolvedValue(response as unknown as Awaited<ReturnType<HttpClient['get']>>);
-  MockedHttpClient.prototype.post.mockResolvedValue(response as unknown as Awaited<ReturnType<HttpClient['post']>>);
   MockedHttpClient.prototype.dispose = dispose;
   return { response, dispose };
 }
@@ -54,24 +53,13 @@ describe('fetchSecret', () => {
     client = createClient('oidc-token', API_VERSION);
   });
 
-  test('uses GET for static secrets and returns secret object', async () => {
+  test('returns secret object', async () => {
     mockHttpResponse(200, JSON.stringify({ secret: { password: 'my-secret' }, metadata: {} }));
 
-    const result = await fetchSecret(client, API_BASE_URL, SITE_ID, 'static', 'db-password');
+    const result = await fetchSecret(client, API_BASE_URL, SITE_ID, 'db-password');
 
     expect(result).toEqual({ password: 'my-secret' });
     expect(MockedHttpClient.prototype.get).toHaveBeenCalled();
-    expect(MockedHttpClient.prototype.post).not.toHaveBeenCalled();
-  });
-
-  test('uses POST for dynamic secrets', async () => {
-    mockHttpResponse(201, JSON.stringify({ secret: { accessKeyId: 'AKIA****' } }));
-
-    const result = await fetchSecret(client, API_BASE_URL, SITE_ID, 'dynamic', 'aws-creds');
-
-    expect(result).toEqual({ accessKeyId: 'AKIA****' });
-    expect(MockedHttpClient.prototype.post).toHaveBeenCalled();
-    expect(MockedHttpClient.prototype.get).not.toHaveBeenCalled();
   });
 
   test('creates client with bearer token and api version header', () => {
@@ -90,7 +78,7 @@ describe('fetchSecret', () => {
   test('includes folder query parameter when path has folder', async () => {
     mockHttpResponse(200, JSON.stringify({ secret: { k: 'v' } }));
 
-    await fetchSecret(client, API_BASE_URL, SITE_ID, 'static', '/prod/db/password');
+    await fetchSecret(client, API_BASE_URL, SITE_ID, '/prod/db/password');
 
     const url = MockedHttpClient.prototype.get.mock.calls[0][0];
     expect(url).toContain('/static/password');
@@ -100,27 +88,17 @@ describe('fetchSecret', () => {
   test('omits folder query parameter when path has no folder', async () => {
     mockHttpResponse(200, JSON.stringify({ secret: { k: 'v' } }));
 
-    await fetchSecret(client, API_BASE_URL, SITE_ID, 'static', 'password');
+    await fetchSecret(client, API_BASE_URL, SITE_ID, 'password');
 
     const url = MockedHttpClient.prototype.get.mock.calls[0][0];
     expect(url).toContain('/static/password');
     expect(url).not.toContain('folder');
   });
 
-  test('builds correct URL for dynamic generate endpoint', async () => {
-    mockHttpResponse(201, JSON.stringify({ secret: { k: 'v' } }));
-
-    await fetchSecret(client, API_BASE_URL, SITE_ID, 'dynamic', '/prod/aws-creds');
-
-    const url = MockedHttpClient.prototype.post.mock.calls[0][0];
-    expect(url).toContain('/dynamic/aws-creds/generate');
-    expect(url).toContain('folder=prod');
-  });
-
   test('includes site-id in URL', async () => {
     mockHttpResponse(200, JSON.stringify({ secret: { k: 'v' } }));
 
-    await fetchSecret(client, API_BASE_URL, SITE_ID, 'static', 'secret');
+    await fetchSecret(client, API_BASE_URL, SITE_ID, 'secret');
 
     const url = MockedHttpClient.prototype.get.mock.calls[0][0];
     expect(url).toContain(`/site/${SITE_ID}/`);
@@ -129,7 +107,7 @@ describe('fetchSecret', () => {
   test('throws on non-success status code', async () => {
     mockHttpResponse(401, 'Unauthorized');
 
-    await expect(fetchSecret(client, API_BASE_URL, SITE_ID, 'static', 'path')).rejects.toThrow(
+    await expect(fetchSecret(client, API_BASE_URL, SITE_ID, 'path')).rejects.toThrow(
       'BeyondTrust API returned HTTP 401',
     );
   });
@@ -137,7 +115,7 @@ describe('fetchSecret', () => {
   test('throws on invalid JSON response', async () => {
     mockHttpResponse(200, 'not json');
 
-    await expect(fetchSecret(client, API_BASE_URL, SITE_ID, 'static', 'path')).rejects.toThrow(
+    await expect(fetchSecret(client, API_BASE_URL, SITE_ID, 'path')).rejects.toThrow(
       'BeyondTrust API returned an invalid JSON response',
     );
   });
@@ -145,7 +123,7 @@ describe('fetchSecret', () => {
   test('throws when response is missing secret field', async () => {
     mockHttpResponse(200, JSON.stringify({ other: 'data' }));
 
-    await expect(fetchSecret(client, API_BASE_URL, SITE_ID, 'static', 'path')).rejects.toThrow(
+    await expect(fetchSecret(client, API_BASE_URL, SITE_ID, 'path')).rejects.toThrow(
       'BeyondTrust API response did not contain a secret value',
     );
   });

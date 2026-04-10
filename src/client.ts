@@ -37,18 +37,17 @@ export async function fetchSecret(
   client: HttpClient,
   apiBaseUrl: string,
   siteId: string,
-  secretType: 'static' | 'dynamic',
   secretPath: string,
 ): Promise<Record<string, unknown>> {
   const { folder, name } = parsePath(secretPath);
-  const url = buildUrl(apiBaseUrl, siteId, secretType, name, folder);
+  const url = buildUrl(apiBaseUrl, siteId, name, folder);
 
-  const response = secretType === 'static' ? await client.get(url) : await client.post(url, '');
+  const response = await client.get(url);
 
   const statusCode = response.message.statusCode ?? 0;
   const body = await response.readBody();
 
-  if (statusCode !== 200 && statusCode !== 201) {
+  if (statusCode !== 200) {
     throw new Error(`BeyondTrust API returned HTTP ${statusCode}`);
   }
 
@@ -66,17 +65,11 @@ export async function fetchSecret(
   return result.secret;
 }
 
-function buildUrl(
-  apiBaseUrl: string,
-  siteId: string,
-  secretType: 'static' | 'dynamic',
-  name: string,
-  folder: string,
-): string {
+function buildUrl(apiBaseUrl: string, siteId: string, name: string, folder: string): string {
   const encodedName = encodeURIComponent(name);
   const base = `${apiBaseUrl}/site/${encodeURIComponent(siteId)}${API_PATH}`;
 
-  const path = secretType === 'static' ? `${base}/static/${encodedName}` : `${base}/dynamic/${encodedName}/generate`;
+  const path = `${base}/static/${encodedName}`;
 
   const params = new URLSearchParams();
   if (folder) {

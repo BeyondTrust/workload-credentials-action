@@ -8,13 +8,12 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 const SECRET_PATH_REGEX = /^\/?[a-zA-Z0-9\-_@~*^%]+(\/[a-zA-Z0-9\-_@~*^%]+)*$/;
 
 interface SecretRequest {
-  secretType: 'static' | 'dynamic';
   path: string;
   key: string;
   outputName: string;
 }
 
-export function parseSecretInput(input: string, secretType: 'static' | 'dynamic'): SecretRequest[] {
+export function parseSecretInput(input: string): SecretRequest[] {
   return input
     .split('\n')
     .map((line) => line.trim())
@@ -22,12 +21,12 @@ export function parseSecretInput(input: string, secretType: 'static' | 'dynamic'
     .map((line) => {
       const segments = line.split('|').map((s) => s.trim());
       if (segments.length > 2) {
-        throw new Error(`Invalid ${secretType} secret entry: "${line}". Too many "|" separators.`);
+        throw new Error(`Invalid secret entry: "${line}". Too many "|" separators.`);
       }
       const [left, alias] = segments;
       const parts = left.split(/\s+/);
       if (parts.length !== 2) {
-        throw new Error(`Invalid ${secretType} secret entry: "${line}". Expected format: <path> <key> [| <alias>]`);
+        throw new Error(`Invalid secret entry: "${line}". Expected format: <path> <key> [| <alias>]`);
       }
       const [path, key] = parts;
       if (!SECRET_PATH_REGEX.test(path) || path === '*') {
@@ -36,7 +35,7 @@ export function parseSecretInput(input: string, secretType: 'static' | 'dynamic'
       if (key === '*' && alias) {
         throw new Error(`Alias is not supported with wildcard (*) in "${line}".`);
       }
-      return { secretType, path, key, outputName: alias || key };
+      return { path, key, outputName: alias || key };
     });
 }
 
@@ -53,8 +52,7 @@ export async function run(): Promise<void> {
     const apiBaseUrl = getInput('api-base-url');
     const apiVersion = getInput('api-version');
     const siteId = getInput('site-id', { required: true });
-    const staticInput = getInput('static');
-    const dynamicInput = getInput('dynamic');
+    const secretsInput = getInput('secrets', { required: true });
 
     if (!apiBaseUrl.startsWith('https://')) {
       throw new Error('api-base-url must use HTTPS.');
@@ -64,16 +62,10 @@ export async function run(): Promise<void> {
       throw new Error('Invalid site-id. Must be a valid UUID.');
     }
 
-    const requests: SecretRequest[] = [];
-    if (staticInput) {
-      requests.push(...parseSecretInput(staticInput, 'static'));
-    }
-    if (dynamicInput) {
-      requests.push(...parseSecretInput(dynamicInput, 'dynamic'));
-    }
+    const requests = parseSecretInput(secretsInput);
 
     if (requests.length === 0) {
-      throw new Error('At least one static or dynamic secret must be specified.');
+      throw new Error('At least one secret must be specified.');
     }
 
     info('Requesting OIDC token from GitHub...');
@@ -89,13 +81,12 @@ export async function run(): Promise<void> {
     try {
       // Phase 1: Fetch all secrets and validate keys
       for (const req of requests) {
-        const cacheKey = `${req.secretType}:${req.path}`;
-        if (!cache.has(cacheKey)) {
-          info(`Fetching ${req.secretType} secret: ${req.path}`);
-          cache.set(cacheKey, await fetchSecret(client, apiBaseUrl, siteId, req.secretType, req.path));
+        if (!cache.has(req.path)) {
+          info(`Fetching secret: ${req.path}`);
+          cache.set(req.path, await fetchSecret(client, apiBaseUrl, siteId, req.path));
         }
 
-        const parsed = cache.get(cacheKey)!;
+        const parsed = cache.get(req.path)!;
         if (req.key !== '*' && !(req.key in parsed)) {
           throw new Error(`Key "${req.key}" not found in secret at "${req.path}".`);
         }
@@ -104,7 +95,7 @@ export async function run(): Promise<void> {
       // Check for duplicate output names (including wildcard expansions)
       const outputNames = new Set<string>();
       for (const req of requests) {
-        const names = req.key === '*' ? Object.keys(cache.get(`${req.secretType}:${req.path}`)!) : [req.outputName];
+        const names = req.key === '*' ? Object.keys(cache.get(req.path)!) : [req.outputName];
 
         for (const name of names) {
           if (outputNames.has(name)) {
@@ -116,7 +107,7 @@ export async function run(): Promise<void> {
 
       // Phase 2: Export all outputs (only reached if all fetches and validations succeed)
       for (const req of requests) {
-        const parsed = cache.get(`${req.secretType}:${req.path}`)!;
+        const parsed = cache.get(req.path)!;
 
         if (req.key === '*') {
           const keys = Object.keys(parsed);

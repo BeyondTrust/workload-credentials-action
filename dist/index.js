@@ -19938,13 +19938,13 @@ function createClient(oidcToken, apiVersion) {
     socketTimeout: REQUEST_TIMEOUT_MS
   });
 }
-async function fetchSecret(client, apiBaseUrl, siteId, secretType, secretPath) {
+async function fetchSecret(client, apiBaseUrl, siteId, secretPath) {
   const { folder, name } = parsePath(secretPath);
-  const url = buildUrl(apiBaseUrl, siteId, secretType, name, folder);
-  const response = secretType === "static" ? await client.get(url) : await client.post(url, "");
+  const url = buildUrl(apiBaseUrl, siteId, name, folder);
+  const response = await client.get(url);
   const statusCode = response.message.statusCode ?? 0;
   const body = await response.readBody();
-  if (statusCode !== 200 && statusCode !== 201) {
+  if (statusCode !== 200) {
     throw new Error(`BeyondTrust API returned HTTP ${statusCode}`);
   }
   let result;
@@ -19958,10 +19958,10 @@ async function fetchSecret(client, apiBaseUrl, siteId, secretType, secretPath) {
   }
   return result.secret;
 }
-function buildUrl(apiBaseUrl, siteId, secretType, name, folder) {
+function buildUrl(apiBaseUrl, siteId, name, folder) {
   const encodedName = encodeURIComponent(name);
   const base = `${apiBaseUrl}/site/${encodeURIComponent(siteId)}${API_PATH}`;
-  const path = secretType === "static" ? `${base}/static/${encodedName}` : `${base}/dynamic/${encodedName}/generate`;
+  const path = `${base}/static/${encodedName}`;
   const params = new URLSearchParams();
   if (folder) {
     params.set("folder", folder);
@@ -19983,16 +19983,16 @@ var LIB_VERSION = "0.0.0";
 // src/main.ts
 var UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 var SECRET_PATH_REGEX = /^\/?[a-zA-Z0-9\-_@~*^%]+(\/[a-zA-Z0-9\-_@~*^%]+)*$/;
-function parseSecretInput(input, secretType) {
+function parseSecretInput(input) {
   return input.split("\n").map((line) => line.trim()).filter((line) => line.length > 0).map((line) => {
     const segments = line.split("|").map((s) => s.trim());
     if (segments.length > 2) {
-      throw new Error(`Invalid ${secretType} secret entry: "${line}". Too many "|" separators.`);
+      throw new Error(`Invalid secret entry: "${line}". Too many "|" separators.`);
     }
     const [left, alias] = segments;
     const parts = left.split(/\s+/);
     if (parts.length !== 2) {
-      throw new Error(`Invalid ${secretType} secret entry: "${line}". Expected format: <path> <key> [| <alias>]`);
+      throw new Error(`Invalid secret entry: "${line}". Expected format: <path> <key> [| <alias>]`);
     }
     const [path, key] = parts;
     if (!SECRET_PATH_REGEX.test(path) || path === "*") {
@@ -20001,7 +20001,7 @@ function parseSecretInput(input, secretType) {
     if (key === "*" && alias) {
       throw new Error(`Alias is not supported with wildcard (*) in "${line}".`);
     }
-    return { secretType, path, key, outputName: alias || key };
+    return { path, key, outputName: alias || key };
   });
 }
 function toStringValue(val) {
@@ -20015,23 +20015,16 @@ async function run() {
     const apiBaseUrl = getInput("api-base-url");
     const apiVersion = getInput("api-version");
     const siteId = getInput("site-id", { required: true });
-    const staticInput = getInput("static");
-    const dynamicInput = getInput("dynamic");
+    const secretsInput = getInput("secrets", { required: true });
     if (!apiBaseUrl.startsWith("https://")) {
       throw new Error("api-base-url must use HTTPS.");
     }
     if (!UUID_REGEX.test(siteId)) {
       throw new Error("Invalid site-id. Must be a valid UUID.");
     }
-    const requests = [];
-    if (staticInput) {
-      requests.push(...parseSecretInput(staticInput, "static"));
-    }
-    if (dynamicInput) {
-      requests.push(...parseSecretInput(dynamicInput, "dynamic"));
-    }
+    const requests = parseSecretInput(secretsInput);
     if (requests.length === 0) {
-      throw new Error("At least one static or dynamic secret must be specified.");
+      throw new Error("At least one secret must be specified.");
     }
     info("Requesting OIDC token from GitHub...");
     const oidcToken = await getIDToken(siteId);
@@ -20042,19 +20035,18 @@ async function run() {
     const cache = /* @__PURE__ */ new Map();
     try {
       for (const req of requests) {
-        const cacheKey = `${req.secretType}:${req.path}`;
-        if (!cache.has(cacheKey)) {
-          info(`Fetching ${req.secretType} secret: ${req.path}`);
-          cache.set(cacheKey, await fetchSecret(client, apiBaseUrl, siteId, req.secretType, req.path));
+        if (!cache.has(req.path)) {
+          info(`Fetching secret: ${req.path}`);
+          cache.set(req.path, await fetchSecret(client, apiBaseUrl, siteId, req.path));
         }
-        const parsed = cache.get(cacheKey);
+        const parsed = cache.get(req.path);
         if (req.key !== "*" && !(req.key in parsed)) {
           throw new Error(`Key "${req.key}" not found in secret at "${req.path}".`);
         }
       }
       const outputNames = /* @__PURE__ */ new Set();
       for (const req of requests) {
-        const names = req.key === "*" ? Object.keys(cache.get(`${req.secretType}:${req.path}`)) : [req.outputName];
+        const names = req.key === "*" ? Object.keys(cache.get(req.path)) : [req.outputName];
         for (const name of names) {
           if (outputNames.has(name)) {
             throw new Error(`Duplicate output name "${name}". Each output must be unique.`);
@@ -20063,7 +20055,7 @@ async function run() {
         }
       }
       for (const req of requests) {
-        const parsed = cache.get(`${req.secretType}:${req.path}`);
+        const parsed = cache.get(req.path);
         if (req.key === "*") {
           const keys = Object.keys(parsed);
           info(`Wildcard export from "${req.path}": ${keys.join(", ")}`);
