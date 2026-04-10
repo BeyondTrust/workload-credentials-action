@@ -19923,12 +19923,12 @@ function parsePath(secretPath) {
     return { folder: "", name: normalized };
   }
   return {
-    folder: normalized.substring(0, lastSlash),
+    folder: normalized.substring(0, lastSlash).replace(/^\//, ""),
     name: normalized.substring(lastSlash + 1)
   };
 }
-async function fetchSecret(oidcToken, apiBaseUrl, apiVersion, siteId, secretType, secretPath) {
-  const client = new HttpClient("beyondtrust-workload-credentials", [], {
+function createClient(oidcToken, apiVersion) {
+  return new HttpClient("beyondtrust-workload-credentials", [], {
     headers: {
       Authorization: `Bearer ${oidcToken}`,
       Accept: "application/json",
@@ -19937,28 +19937,26 @@ async function fetchSecret(oidcToken, apiBaseUrl, apiVersion, siteId, secretType
     },
     socketTimeout: REQUEST_TIMEOUT_MS
   });
-  try {
-    const { folder, name } = parsePath(secretPath);
-    const url = buildUrl(apiBaseUrl, siteId, secretType, name, folder);
-    const response = secretType === "static" ? await client.get(url) : await client.post(url, "");
-    const statusCode = response.message.statusCode ?? 0;
-    const body = await response.readBody();
-    if (statusCode !== 200 && statusCode !== 201) {
-      throw new Error(`BeyondTrust API returned HTTP ${statusCode}`);
-    }
-    let result;
-    try {
-      result = JSON.parse(body);
-    } catch {
-      throw new Error("BeyondTrust API returned an invalid JSON response");
-    }
-    if (!result.secret || typeof result.secret !== "object") {
-      throw new Error("BeyondTrust API response did not contain a secret value");
-    }
-    return JSON.stringify(result.secret);
-  } finally {
-    client.dispose();
+}
+async function fetchSecret(client, apiBaseUrl, siteId, secretType, secretPath) {
+  const { folder, name } = parsePath(secretPath);
+  const url = buildUrl(apiBaseUrl, siteId, secretType, name, folder);
+  const response = secretType === "static" ? await client.get(url) : await client.post(url, "");
+  const statusCode = response.message.statusCode ?? 0;
+  const body = await response.readBody();
+  if (statusCode !== 200 && statusCode !== 201) {
+    throw new Error(`BeyondTrust API returned HTTP ${statusCode}`);
   }
+  let result;
+  try {
+    result = JSON.parse(body);
+  } catch {
+    throw new Error("BeyondTrust API returned an invalid JSON response");
+  }
+  if (!result.secret || typeof result.secret !== "object" || Array.isArray(result.secret)) {
+    throw new Error("BeyondTrust API response did not contain a secret value");
+  }
+  return result.secret;
 }
 function buildUrl(apiBaseUrl, siteId, secretType, name, folder) {
   const encodedName = encodeURIComponent(name);
@@ -20014,7 +20012,7 @@ async function run() {
       throw new Error("api-base-url must use HTTPS.");
     }
     if (!UUID_REGEX.test(siteId)) {
-      throw new Error(`Invalid site-id: "${siteId}". Must be a valid UUID.`);
+      throw new Error("Invalid site-id. Must be a valid UUID.");
     }
     const requests = [];
     if (staticInput) {
@@ -20031,32 +20029,36 @@ async function run() {
     if (!oidcToken) {
       throw new Error('Failed to retrieve OIDC token. Ensure the workflow has "id-token: write" permission.');
     }
+    const client = createClient(oidcToken, apiVersion);
     const cache = /* @__PURE__ */ new Map();
-    for (const req of requests) {
-      const cacheKey = `${req.secretType}:${req.path}`;
-      let parsed = cache.get(cacheKey);
-      if (!parsed) {
-        info(`Fetching ${req.secretType} secret: ${req.path}`);
-        const secret = await fetchSecret(oidcToken, apiBaseUrl, apiVersion, siteId, req.secretType, req.path);
-        parsed = JSON.parse(secret);
-        cache.set(cacheKey, parsed);
-      }
-      if (req.key === "*") {
-        for (const [key, val] of Object.entries(parsed)) {
-          const value = String(val);
-          const envName = key.toUpperCase();
-          setSecretOutput(key, envName, value);
+    try {
+      for (const req of requests) {
+        const cacheKey = `${req.secretType}:${req.path}`;
+        let parsed = cache.get(cacheKey);
+        if (!parsed) {
+          info(`Fetching ${req.secretType} secret: ${req.path}`);
+          parsed = await fetchSecret(client, apiBaseUrl, siteId, req.secretType, req.path);
+          cache.set(cacheKey, parsed);
         }
-      } else {
-        if (!(req.key in parsed)) {
-          throw new Error(`Key "${req.key}" not found in secret at "${req.path}".`);
+        if (req.key === "*") {
+          for (const [key, val] of Object.entries(parsed)) {
+            const value = String(val);
+            const envName = key.toUpperCase();
+            setSecretOutput(key, envName, value);
+          }
+        } else {
+          if (!(req.key in parsed)) {
+            throw new Error(`Key "${req.key}" not found in secret at "${req.path}".`);
+          }
+          const value = String(parsed[req.key]);
+          const envName = req.outputName.toUpperCase();
+          setSecretOutput(req.outputName, envName, value);
         }
-        const value = String(parsed[req.key]);
-        const envName = req.outputName.toUpperCase();
-        setSecretOutput(req.outputName, envName, value);
       }
+      info("All secrets retrieved successfully.");
+    } finally {
+      client.dispose();
     }
-    info("All secrets retrieved successfully.");
   } catch (error2) {
     if (error2 instanceof Error) {
       setFailed(error2.message);
