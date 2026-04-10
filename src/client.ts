@@ -16,20 +16,13 @@ export function parsePath(secretPath: string): { folder: string; name: string } 
   }
 
   return {
-    folder: normalized.substring(0, lastSlash),
+    folder: normalized.substring(0, lastSlash).replace(/^\//, ''),
     name: normalized.substring(lastSlash + 1),
   };
 }
 
-export async function fetchSecret(
-  oidcToken: string,
-  apiBaseUrl: string,
-  apiVersion: string,
-  siteId: string,
-  secretType: 'static' | 'dynamic',
-  secretPath: string,
-): Promise<string> {
-  const client = new HttpClient('beyondtrust-workload-credentials', [], {
+export function createClient(oidcToken: string, apiVersion: string): HttpClient {
+  return new HttpClient('beyondtrust-workload-credentials', [], {
     headers: {
       Authorization: `Bearer ${oidcToken}`,
       Accept: 'application/json',
@@ -38,35 +31,39 @@ export async function fetchSecret(
     },
     socketTimeout: REQUEST_TIMEOUT_MS,
   });
+}
 
-  try {
-    const { folder, name } = parsePath(secretPath);
-    const url = buildUrl(apiBaseUrl, siteId, secretType, name, folder);
+export async function fetchSecret(
+  client: HttpClient,
+  apiBaseUrl: string,
+  siteId: string,
+  secretType: 'static' | 'dynamic',
+  secretPath: string,
+): Promise<Record<string, unknown>> {
+  const { folder, name } = parsePath(secretPath);
+  const url = buildUrl(apiBaseUrl, siteId, secretType, name, folder);
 
-    const response = secretType === 'static' ? await client.get(url) : await client.post(url, '');
+  const response = secretType === 'static' ? await client.get(url) : await client.post(url, '');
 
-    const statusCode = response.message.statusCode ?? 0;
-    const body = await response.readBody();
+  const statusCode = response.message.statusCode ?? 0;
+  const body = await response.readBody();
 
-    if (statusCode !== 200 && statusCode !== 201) {
-      throw new Error(`BeyondTrust API returned HTTP ${statusCode}`);
-    }
-
-    let result: SecretsResponse;
-    try {
-      result = JSON.parse(body) as SecretsResponse;
-    } catch {
-      throw new Error('BeyondTrust API returned an invalid JSON response');
-    }
-
-    if (!result.secret || typeof result.secret !== 'object') {
-      throw new Error('BeyondTrust API response did not contain a secret value');
-    }
-
-    return JSON.stringify(result.secret);
-  } finally {
-    client.dispose();
+  if (statusCode !== 200 && statusCode !== 201) {
+    throw new Error(`BeyondTrust API returned HTTP ${statusCode}`);
   }
+
+  let result: SecretsResponse;
+  try {
+    result = JSON.parse(body) as SecretsResponse;
+  } catch {
+    throw new Error('BeyondTrust API returned an invalid JSON response');
+  }
+
+  if (!result.secret || typeof result.secret !== 'object' || Array.isArray(result.secret)) {
+    throw new Error('BeyondTrust API response did not contain a secret value');
+  }
+
+  return result.secret;
 }
 
 function buildUrl(

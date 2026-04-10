@@ -19864,6 +19864,15 @@ var ExitCode;
   ExitCode2[ExitCode2["Success"] = 0] = "Success";
   ExitCode2[ExitCode2["Failure"] = 1] = "Failure";
 })(ExitCode || (ExitCode = {}));
+function exportVariable(name, val) {
+  const convertedVal = toCommandValue(val);
+  process.env[name] = convertedVal;
+  const filePath = process.env["GITHUB_ENV"] || "";
+  if (filePath) {
+    return issueFileCommand("ENV", prepareKeyValueMessage(name, val));
+  }
+  issueCommand("set-env", { name }, convertedVal);
+}
 function setSecret(secret) {
   issueCommand("add-mask", {}, secret);
 }
@@ -19964,20 +19973,34 @@ function buildUrl(apiBaseUrl, siteId, secretType, name, folder) {
 }
 
 // src/secret.ts
-function setSecretOutput(name, value) {
+function setSecretOutput(outputName, envName, value) {
   setSecret(value);
-  setOutput(name, value);
+  setOutput(outputName, value);
+  exportVariable(envName, value);
 }
 
 // src/version.ts
 var LIB_VERSION = "0.0.0";
 
 // src/main.ts
-var VALID_SECRET_TYPES = ["static", "dynamic"];
 var UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 var SECRET_PATH_REGEX = /^\/?[a-zA-Z0-9\-_@~*^%]+(\/[a-zA-Z0-9\-_@~*^%]+)*$/;
-function isValidSecretType(value) {
-  return VALID_SECRET_TYPES.includes(value);
+function parseSecretInput(input, secretType) {
+  return input.split("\n").map((line) => line.trim()).filter((line) => line.length > 0).map((line) => {
+    const [left, alias] = line.split("|").map((s) => s.trim());
+    const parts = left.split(/\s+/);
+    if (parts.length !== 2) {
+      throw new Error(`Invalid ${secretType} secret entry: "${line}". Expected format: <path> <key> [| <alias>]`);
+    }
+    const [path, key] = parts;
+    if (!SECRET_PATH_REGEX.test(path) || path === "*") {
+      throw new Error(`Invalid secret path: "${path}". Must match pattern: ${SECRET_PATH_REGEX.source}`);
+    }
+    if (key === "*" && alias) {
+      throw new Error(`Alias is not supported with wildcard (*) in "${line}".`);
+    }
+    return { secretType, path, key, outputName: alias || key };
+  });
 }
 async function run() {
   try {
@@ -19985,38 +20008,55 @@ async function run() {
     const apiBaseUrl = getInput("api-base-url") || "https://api.beyondtrust.io";
     const apiVersion = getInput("api-version") || "2026-02-16";
     const siteId = getInput("site-id", { required: true });
-    const secretType = getInput("secret-type", { required: true });
-    const secretPath = getInput("secret-path", { required: true });
-    const secretKey = getInput("secret-key");
+    const staticInput = getInput("static");
+    const dynamicInput = getInput("dynamic");
     if (!apiBaseUrl.startsWith("https://")) {
       throw new Error("api-base-url must use HTTPS.");
     }
     if (!UUID_REGEX.test(siteId)) {
       throw new Error(`Invalid site-id: "${siteId}". Must be a valid UUID.`);
     }
-    if (!isValidSecretType(secretType)) {
-      throw new Error(`Invalid secret-type: "${secretType}". Must be one of: ${VALID_SECRET_TYPES.join(", ")}`);
+    const requests = [];
+    if (staticInput) {
+      requests.push(...parseSecretInput(staticInput, "static"));
     }
-    if (!SECRET_PATH_REGEX.test(secretPath)) {
-      throw new Error(`Invalid secret-path: "${secretPath}". Must match pattern: ${SECRET_PATH_REGEX.source}`);
+    if (dynamicInput) {
+      requests.push(...parseSecretInput(dynamicInput, "dynamic"));
+    }
+    if (requests.length === 0) {
+      throw new Error("At least one static or dynamic secret must be specified.");
     }
     info("Requesting OIDC token from GitHub...");
     const oidcToken = await getIDToken(siteId);
     if (!oidcToken) {
       throw new Error('Failed to retrieve OIDC token. Ensure the workflow has "id-token: write" permission.');
     }
-    info("Fetching secret from BeyondTrust...");
-    const secret = await fetchSecret(oidcToken, apiBaseUrl, apiVersion, siteId, secretType, secretPath);
-    if (secretKey) {
-      const parsed = JSON.parse(secret);
-      if (!(secretKey in parsed)) {
-        throw new Error(`secret-key "${secretKey}" not found in the secret object.`);
+    const cache = /* @__PURE__ */ new Map();
+    for (const req of requests) {
+      const cacheKey = `${req.secretType}:${req.path}`;
+      let parsed = cache.get(cacheKey);
+      if (!parsed) {
+        info(`Fetching ${req.secretType} secret: ${req.path}`);
+        const secret = await fetchSecret(oidcToken, apiBaseUrl, apiVersion, siteId, req.secretType, req.path);
+        parsed = JSON.parse(secret);
+        cache.set(cacheKey, parsed);
       }
-      setSecretOutput("secret", String(parsed[secretKey]));
-    } else {
-      setSecretOutput("secret", secret);
+      if (req.key === "*") {
+        for (const [key, val] of Object.entries(parsed)) {
+          const value = String(val);
+          const envName = key.toUpperCase();
+          setSecretOutput(key, envName, value);
+        }
+      } else {
+        if (!(req.key in parsed)) {
+          throw new Error(`Key "${req.key}" not found in secret at "${req.path}".`);
+        }
+        const value = String(parsed[req.key]);
+        const envName = req.outputName.toUpperCase();
+        setSecretOutput(req.outputName, envName, value);
+      }
     }
-    info("Secret retrieved successfully.");
+    info("All secrets retrieved successfully.");
   } catch (error2) {
     if (error2 instanceof Error) {
       setFailed(error2.message);

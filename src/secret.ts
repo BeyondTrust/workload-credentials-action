@@ -1,6 +1,7 @@
-import { setOutput, setSecret } from '@actions/core';
+import { setOutput, setSecret, exportVariable } from '@actions/core';
 
-export function setSecretOutput(name: string, value: string): void {
+export function setSecretOutput(outputName: string, envName: string, value: string): void {
   setSecret(value);
-  setOutput(name, value);
+  setOutput(outputName, value);
+  exportVariable(envName, value);
 }
