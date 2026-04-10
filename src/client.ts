@@ -26,7 +26,6 @@ export function createClient(oidcToken: string, apiVersion: string): HttpClient 
     headers: {
       Authorization: `Bearer ${oidcToken}`,
       Accept: 'application/json',
-      'Content-Type': 'application/json',
       'bt-secrets-api-version': apiVersion,
     },
     socketTimeout: REQUEST_TIMEOUT_MS,
