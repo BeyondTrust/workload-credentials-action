@@ -25,16 +25,18 @@ All retrieved secret values are registered with GitHub's secret masking, prevent
 
 ## Usage
 
-The `secrets` input accepts a YAML list. Each entry supports:
+The `static-secrets` input accepts a YAML list. Each entry supports:
 
 | Field | Required | Description |
 |-------|----------|-------------|
 | `path` | Yes | The secret path in BeyondTrust (e.g. `prod/app`). |
-| `key` | Yes | The field to extract from the secret object. Use `*` to export all fields. |
-| `output-name` | No | Custom name for the step output. Defaults to the key name. With `key: "*"`, use a prefix ending in `*` (e.g. `my_app_*`). |
-| `export-to-env` | No | Export the value as an uppercased environment variable for subsequent steps. Defaults to `false`. |
+| `key` | No | A specific field to extract. Omit to export all fields. |
+| `output-name` | No | Alias for the output name, or a prefix if ending with `*`. |
+| `export-to-env` | No | Export as an uppercased environment variable. Defaults to `false`. |
 
-### Basic usage
+### Export all fields
+
+The simplest form — exports every field from the secret as a step output:
 
 ```yaml
 steps:
@@ -45,9 +47,6 @@ steps:
       site-id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
       static-secrets: |
         - path: "prod/app"
-          key: "connectionString"
-        - path: "prod/app"
-          key: "apiKey"
 
   - name: Deploy
     env:
@@ -56,7 +55,9 @@ steps:
     run: npm run deploy
 ```
 
-### Custom output names
+### Export a single field
+
+Use `key` to extract a specific field:
 
 ```yaml
 steps:
@@ -69,14 +70,10 @@ steps:
         - path: "prod/app"
           key: "connectionString"
           output-name: "DATABASE_URL"
-        - path: "prod/app"
-          key: "apiKey"
-          output-name: "API_KEY"
 
   - name: Deploy
     env:
       DATABASE_URL: ${{ steps.secrets.outputs.DATABASE_URL }}
-      API_KEY: ${{ steps.secrets.outputs.API_KEY }}
     run: npm run deploy
 ```
 
@@ -95,67 +92,24 @@ steps:
           key: "connectionString"
           output-name: "DATABASE_URL"
           export-to-env: true
-        - path: "prod/app"
-          key: "apiKey"
-          output-name: "API_KEY"
-          export-to-env: true
 
   - name: Deploy
     run: npm run deploy
 ```
 
-### Wildcard
+### Prefix
 
-Use `key: "*"` to export all fields from a secret:
+Use `output-name` ending with `*` to prefix output names. Works with or without `key`:
 
 ```yaml
 steps:
-  - name: Retrieve all app secrets
+  - name: Retrieve all fields with prefix
     uses: BeyondTrust/workload-credentials@v1
     id: secrets
     with:
       site-id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
       static-secrets: |
         - path: "prod/app"
-          key: "*"
-
-  - name: Deploy
-    env:
-      DATABASE_URL: ${{ steps.secrets.outputs.connectionString }}
-    run: npm run deploy
-```
-
-Combine `key: "*"` with `export-to-env: true` to export all fields as environment variables:
-
-```yaml
-steps:
-  - name: Retrieve all app secrets
-    uses: BeyondTrust/workload-credentials@v1
-    with:
-      site-id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
-      static-secrets: |
-        - path: "prod/app"
-          key: "*"
-          export-to-env: true
-
-  - name: Deploy
-    run: npm run deploy
-```
-
-### Wildcard with prefix
-
-Use `output-name` with a trailing `*` to prefix all wildcard-expanded output names:
-
-```yaml
-steps:
-  - name: Retrieve all app secrets
-    uses: BeyondTrust/workload-credentials@v1
-    id: secrets
-    with:
-      site-id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
-      static-secrets: |
-        - path: "prod/app"
-          key: "*"
           output-name: "my_app_*"
           export-to-env: true
 
@@ -167,6 +121,38 @@ If the secret contains `{ "apiKey": "sk-123", "dbHost": "localhost" }`, this set
 - Step outputs: `my_app_apiKey`, `my_app_dbHost`
 - Env vars: `MY_APP_APIKEY`, `MY_APP_DBHOST`
 
+Prefix also works with a single key:
+
+```yaml
+static-secrets: |
+  - path: "prod/app"
+    key: "field1"
+    output-name: "my_app_*"
+```
+
+This produces the output `my_app_field1`.
+
+### Multiple secrets
+
+```yaml
+steps:
+  - name: Retrieve secrets
+    uses: BeyondTrust/workload-credentials@v1
+    with:
+      site-id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
+      static-secrets: |
+        - path: "prod/app"
+          output-name: "APP_*"
+          export-to-env: true
+        - path: "prod/db"
+          key: "connectionString"
+          output-name: "DATABASE_URL"
+          export-to-env: true
+
+  - name: Deploy
+    run: npm run deploy
+```
+
 ## Inputs
 
 | Name | Required | Description |
@@ -177,9 +163,12 @@ If the secret contains `{ "apiKey": "sk-123", "dbHost": "localhost" }`, this set
 
 ## Outputs
 
-Each secret is available as a **step output**, named by `output-name` (or `key` if not specified). Access via `steps.<id>.outputs.<name>`.
+Each secret is available as a **step output**. The name is determined by:
+- `output-name` (alias) if provided
+- `output-name` ending with `*` (prefix) + the field key
+- The original field key if no `output-name` is set
 
-When `export-to-env: true`, the value is also exported as an **uppercased environment variable** available in all subsequent steps.
+When `export-to-env: true`, the value is also exported as an **uppercased environment variable** available in all subsequent steps. Hyphens in names are converted to underscores.
 
 All values are masked in workflow logs.
 

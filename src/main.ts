@@ -12,9 +12,9 @@ const SECRET_PATH_REGEX = /^\/?[a-zA-Z0-9\-_@~*^%]+(\/[a-zA-Z0-9\-_@~*^%]+)*$/;
 
 export interface SecretRequest {
   path: string;
-  key: string;
-  outputName: string;
+  key?: string;
   prefix: string;
+  alias: string;
   exportToEnv: boolean;
 }
 
@@ -36,8 +36,8 @@ export function parseSecretInput(input: string): SecretRequest[] {
       throw new Error(`Secret entry ${index + 1}: "path" is required.`);
     }
 
-    if (!item.key || typeof item.key !== 'string') {
-      throw new Error(`Secret entry ${index + 1}: "key" is required.`);
+    if (item.key !== undefined && typeof item.key !== 'string') {
+      throw new Error(`Secret entry ${index + 1}: "key" must be a string.`);
     }
 
     if (item['output-name'] !== undefined && typeof item['output-name'] !== 'string') {
@@ -49,24 +49,25 @@ export function parseSecretInput(input: string): SecretRequest[] {
     }
 
     const path = item.path;
-    const key = item.key;
-    const outputName = (item['output-name'] as string) || key;
+    const key = item.key as string | undefined;
+    const outputName = (item['output-name'] as string) || '';
     const exportToEnv = (item['export-to-env'] as boolean) ?? false;
 
-    if (!SECRET_PATH_REGEX.test(path) || path === '*') {
+    if (!SECRET_PATH_REGEX.test(path)) {
       throw new Error(`Secret entry ${index + 1}: invalid path "${path}".`);
     }
 
-    let prefix = '';
-    if (key === '*' && item['output-name']) {
-      if (outputName.endsWith('*')) {
-        prefix = outputName.slice(0, -1);
-      } else {
-        throw new Error(`Secret entry ${index + 1}: "output-name" must end with "*" when used with wildcard key.`);
-      }
+    // output-name ending with * = prefix mode, otherwise = alias mode
+    const isPrefix = outputName.endsWith('*');
+    const prefix = isPrefix ? outputName.slice(0, -1) : '';
+    const alias = isPrefix ? '' : outputName;
+
+    // Alias without key: can't alias all fields to one name
+    if (!key && alias) {
+      throw new Error(`Secret entry ${index + 1}: "output-name" must end with "*" when "key" is not specified.`);
     }
 
-    return { path, key, outputName, prefix, exportToEnv };
+    return { path, key, prefix, alias, exportToEnv };
   });
 }
 
@@ -86,6 +87,11 @@ function toStringValue(val: unknown): string {
   if (val === null || val === undefined) return '';
   if (typeof val === 'object') return JSON.stringify(val);
   return String(val);
+}
+
+function resolveOutputName(req: SecretRequest, fieldKey: string): string {
+  if (req.alias) return req.alias;
+  return `${req.prefix}${fieldKey}`;
 }
 
 export async function run(): Promise<void> {
@@ -125,18 +131,18 @@ export async function run(): Promise<void> {
         }
 
         const parsed = cache.get(req.path)!;
-        if (req.key !== '*' && !(req.key in parsed)) {
+        if (req.key && !(req.key in parsed)) {
           throw new Error(`Key "${req.key}" not found in secret at "${req.path}".`);
         }
       }
 
-      // Check for duplicate output names (including wildcard expansions)
+      // Check for duplicate output names
       const outputNames = new Set<string>();
       for (const req of requests) {
-        const names =
-          req.key === '*' ? Object.keys(cache.get(req.path)!).map((k) => `${req.prefix}${k}`) : [req.outputName];
+        const keys = req.key ? [req.key] : Object.keys(cache.get(req.path)!);
 
-        for (const name of names) {
+        for (const k of keys) {
+          const name = resolveOutputName(req, k);
           if (outputNames.has(name)) {
             throw new Error(`Duplicate output name "${name}". Each output must be unique.`);
           }
@@ -147,19 +153,17 @@ export async function run(): Promise<void> {
       // Phase 2: Export all outputs (only reached if all fetches and validations succeed)
       for (const req of requests) {
         const parsed = cache.get(req.path)!;
+        const keys = req.key ? [req.key] : Object.keys(parsed);
 
-        if (req.key === '*') {
-          const keys = Object.keys(parsed);
-          info(`Wildcard export from "${req.path}": ${keys.length} keys`);
-          for (const [key, val] of Object.entries(parsed)) {
-            const name = `${req.prefix}${key}`;
-            const envName = req.exportToEnv ? toEnvName(name) : undefined;
-            setSecretOutput(name, toStringValue(val), envName);
-          }
-        } else {
-          const value = toStringValue(parsed[req.key]);
-          const envName = req.exportToEnv ? toEnvName(req.outputName) : undefined;
-          setSecretOutput(req.outputName, value, envName);
+        if (!req.key) {
+          info(`Exporting all fields from "${req.path}": ${keys.length} keys`);
+        }
+
+        for (const k of keys) {
+          const name = resolveOutputName(req, k);
+          const value = toStringValue(parsed[k]);
+          const envName = req.exportToEnv ? toEnvName(name) : undefined;
+          setSecretOutput(name, value, envName);
         }
       }
 

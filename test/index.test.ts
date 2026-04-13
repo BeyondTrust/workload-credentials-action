@@ -14,17 +14,53 @@ const mockedSecret = secret as jest.Mocked<typeof secret>;
 const SITE_ID = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
 
 describe('parseSecretInput', () => {
-  test('parses a single entry', () => {
-    const input = '- path: "prod/app"\n  key: "password"';
+  // Scenario 1: no key, no output-name
+  test('parses entry without key or output-name', () => {
+    const input = '- path: "prod/app"';
+    expect(parseSecretInput(input)).toEqual([{ path: 'prod/app', prefix: '', alias: '', exportToEnv: false }]);
+  });
+
+  // Scenario 2: no key, output-name with prefix
+  test('parses entry without key with prefix output-name', () => {
+    const input = '- path: "prod/app"\n  output-name: "my_app_*"';
+    expect(parseSecretInput(input)).toEqual([{ path: 'prod/app', prefix: 'my_app_', alias: '', exportToEnv: false }]);
+  });
+
+  // Scenario 3: no key, output-name without * (error)
+  test('throws when output-name without * is used without key', () => {
+    expect(() => parseSecretInput('- path: "prod/app"\n  output-name: "DB_PASSWORD"')).toThrow(
+      'Secret entry 1: "output-name" must end with "*" when "key" is not specified.',
+    );
+  });
+
+  // Scenario 4: key, no output-name
+  test('parses entry with key only', () => {
+    const input = '- path: "prod/app"\n  key: "field1"';
     expect(parseSecretInput(input)).toEqual([
-      { path: 'prod/app', key: 'password', outputName: 'password', exportToEnv: false, prefix: '' },
+      { path: 'prod/app', key: 'field1', prefix: '', alias: '', exportToEnv: false },
     ]);
   });
 
-  test('parses entry with output-name and export-to-env', () => {
-    const input = '- path: "prod/app"\n  key: "password"\n  output-name: "DB_PASSWORD"\n  export-to-env: true';
+  // Scenario 5: key, output-name alias
+  test('parses entry with key and alias output-name', () => {
+    const input = '- path: "prod/app"\n  key: "field1"\n  output-name: "DB_PASSWORD"';
     expect(parseSecretInput(input)).toEqual([
-      { path: 'prod/app', key: 'password', outputName: 'DB_PASSWORD', exportToEnv: true, prefix: '' },
+      { path: 'prod/app', key: 'field1', prefix: '', alias: 'DB_PASSWORD', exportToEnv: false },
+    ]);
+  });
+
+  // Scenario 6: key, output-name prefix
+  test('parses entry with key and prefix output-name', () => {
+    const input = '- path: "prod/app"\n  key: "field1"\n  output-name: "my_app_*"';
+    expect(parseSecretInput(input)).toEqual([
+      { path: 'prod/app', key: 'field1', prefix: 'my_app_', alias: '', exportToEnv: false },
+    ]);
+  });
+
+  test('parses entry with export-to-env', () => {
+    const input = '- path: "prod/app"\n  key: "password"\n  export-to-env: true';
+    expect(parseSecretInput(input)).toEqual([
+      { path: 'prod/app', key: 'password', prefix: '', alias: '', exportToEnv: true },
     ]);
   });
 
@@ -35,15 +71,8 @@ describe('parseSecretInput', () => {
 - path: "prod/app"
   key: "apiKey"`;
     expect(parseSecretInput(input)).toEqual([
-      { path: 'prod/app', key: 'connectionString', outputName: 'DATABASE_URL', exportToEnv: false, prefix: '' },
-      { path: 'prod/app', key: 'apiKey', outputName: 'apiKey', exportToEnv: false, prefix: '' },
-    ]);
-  });
-
-  test('parses wildcard entry', () => {
-    const input = '- path: "prod/app"\n  key: "*"';
-    expect(parseSecretInput(input)).toEqual([
-      { path: 'prod/app', key: '*', outputName: '*', exportToEnv: false, prefix: '' },
+      { path: 'prod/app', key: 'connectionString', prefix: '', alias: 'DATABASE_URL', exportToEnv: false },
+      { path: 'prod/app', key: 'apiKey', prefix: '', alias: '', exportToEnv: false },
     ]);
   });
 
@@ -55,16 +84,12 @@ describe('parseSecretInput', () => {
     expect(() => parseSecretInput('- key: "password"')).toThrow('Secret entry 1: "path" is required.');
   });
 
-  test('throws when key is missing', () => {
-    expect(() => parseSecretInput('- path: "prod/app"')).toThrow('Secret entry 1: "key" is required.');
+  test('throws when key is not a string', () => {
+    expect(() => parseSecretInput('- path: "prod/app"\n  key: 123')).toThrow('Secret entry 1: "key" must be a string.');
   });
 
   test('throws on invalid path', () => {
     expect(() => parseSecretInput('- path: "invalid!path"\n  key: "k"')).toThrow('Secret entry 1: invalid path');
-  });
-
-  test('throws when path is a wildcard', () => {
-    expect(() => parseSecretInput('- path: "*"\n  key: "k"')).toThrow('Secret entry 1: invalid path');
   });
 
   test('throws when entry is not an object', () => {
@@ -85,19 +110,6 @@ describe('parseSecretInput', () => {
 
   test('returns empty array for empty YAML list', () => {
     expect(parseSecretInput('[]')).toEqual([]);
-  });
-
-  test('throws when output-name without trailing * is used with wildcard key', () => {
-    expect(() => parseSecretInput('- path: "prod/app"\n  key: "*"\n  output-name: "ALIAS"')).toThrow(
-      'Secret entry 1: "output-name" must end with "*" when used with wildcard key.',
-    );
-  });
-
-  test('parses wildcard with prefix', () => {
-    const input = '- path: "prod/app"\n  key: "*"\n  output-name: "my_app_*"';
-    expect(parseSecretInput(input)).toEqual([
-      { path: 'prod/app', key: '*', outputName: 'my_app_*', prefix: 'my_app_', exportToEnv: false },
-    ]);
   });
 });
 
@@ -147,45 +159,103 @@ describe('run', () => {
     return entries.map((e) => `- ${e}`).join('\n');
   }
 
-  test('fetches a secret and sets output by key', async () => {
+  // Scenario 1: no key, no output-name → export all fields
+  test('exports all fields when key is omitted', async () => {
     setupInputs({
       'site-id': SITE_ID,
-      'static-secrets': yamlSecrets('path: "prod/db/creds"\n  key: "userName"'),
-    });
-    mockedCore.getIDToken.mockResolvedValue('oidc-token');
-    mockedClient.fetchSecret.mockResolvedValue({ userName: 'admin', password: 'secret' });
-
-    await run();
-
-    expect(mockedCore.getIDToken).toHaveBeenCalledWith(SITE_ID);
-    expect(mockedClient.fetchSecret).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.any(String),
-      SITE_ID,
-      'prod/db/creds',
-    );
-    expect(mockedSecret.setSecretOutput).toHaveBeenCalledWith('userName', 'admin', undefined);
-    expect(mockedCore.setFailed).not.toHaveBeenCalled();
-  });
-
-  test('uses output-name when provided', async () => {
-    setupInputs({
-      'site-id': SITE_ID,
-      'static-secrets': yamlSecrets('path: "prod/db/creds"\n  key: "userName"\n  output-name: "DB_USERNAME"'),
+      'static-secrets': yamlSecrets('path: "prod/app"'),
     });
     mockedCore.getIDToken.mockResolvedValue('token');
-    mockedClient.fetchSecret.mockResolvedValue({ userName: 'admin' });
+    mockedClient.fetchSecret.mockResolvedValue({ field1: 'a', field2: 'b' });
 
     await run();
 
-    expect(mockedSecret.setSecretOutput).toHaveBeenCalledWith('DB_USERNAME', 'admin', undefined);
+    expect(mockedSecret.setSecretOutput).toHaveBeenCalledWith('field1', 'a', undefined);
+    expect(mockedSecret.setSecretOutput).toHaveBeenCalledWith('field2', 'b', undefined);
     expect(mockedCore.setFailed).not.toHaveBeenCalled();
   });
 
+  // Scenario 2: no key, output-name prefix → export all fields prefixed
+  test('exports all fields with prefix', async () => {
+    setupInputs({
+      'site-id': SITE_ID,
+      'static-secrets': yamlSecrets('path: "prod/app"\n  output-name: "my_app_*"'),
+    });
+    mockedCore.getIDToken.mockResolvedValue('token');
+    mockedClient.fetchSecret.mockResolvedValue({ field1: 'a', field2: 'b' });
+
+    await run();
+
+    expect(mockedSecret.setSecretOutput).toHaveBeenCalledWith('my_app_field1', 'a', undefined);
+    expect(mockedSecret.setSecretOutput).toHaveBeenCalledWith('my_app_field2', 'b', undefined);
+    expect(mockedCore.setFailed).not.toHaveBeenCalled();
+  });
+
+  // Scenario 4: key, no output-name → single field
+  test('exports single field by key', async () => {
+    setupInputs({
+      'site-id': SITE_ID,
+      'static-secrets': yamlSecrets('path: "prod/app"\n  key: "field1"'),
+    });
+    mockedCore.getIDToken.mockResolvedValue('token');
+    mockedClient.fetchSecret.mockResolvedValue({ field1: 'a', field2: 'b' });
+
+    await run();
+
+    expect(mockedSecret.setSecretOutput).toHaveBeenCalledTimes(1);
+    expect(mockedSecret.setSecretOutput).toHaveBeenCalledWith('field1', 'a', undefined);
+    expect(mockedCore.setFailed).not.toHaveBeenCalled();
+  });
+
+  // Scenario 5: key, output-name alias → single field aliased
+  test('exports single field with alias', async () => {
+    setupInputs({
+      'site-id': SITE_ID,
+      'static-secrets': yamlSecrets('path: "prod/app"\n  key: "field1"\n  output-name: "DB_PASSWORD"'),
+    });
+    mockedCore.getIDToken.mockResolvedValue('token');
+    mockedClient.fetchSecret.mockResolvedValue({ field1: 'a' });
+
+    await run();
+
+    expect(mockedSecret.setSecretOutput).toHaveBeenCalledWith('DB_PASSWORD', 'a', undefined);
+    expect(mockedCore.setFailed).not.toHaveBeenCalled();
+  });
+
+  // Scenario 6: key, output-name prefix → single field prefixed
+  test('exports single field with prefix', async () => {
+    setupInputs({
+      'site-id': SITE_ID,
+      'static-secrets': yamlSecrets('path: "prod/app"\n  key: "field1"\n  output-name: "my_app_*"'),
+    });
+    mockedCore.getIDToken.mockResolvedValue('token');
+    mockedClient.fetchSecret.mockResolvedValue({ field1: 'a' });
+
+    await run();
+
+    expect(mockedSecret.setSecretOutput).toHaveBeenCalledWith('my_app_field1', 'a', undefined);
+    expect(mockedCore.setFailed).not.toHaveBeenCalled();
+  });
+
+  // Scenario 7: key not found → error
+  test('rejects when key is not found in secret object', async () => {
+    setupInputs({
+      'site-id': SITE_ID,
+      'static-secrets': yamlSecrets('path: "prod/app"\n  key: "missing"'),
+    });
+    mockedCore.getIDToken.mockResolvedValue('token');
+    mockedClient.fetchSecret.mockResolvedValue({ field1: 'a', field2: 'b' });
+
+    await run();
+
+    expect(mockedCore.setFailed).toHaveBeenCalledWith('Key "missing" not found in secret at "prod/app".');
+  });
+
+  // export-to-env tests
   test('exports to env when export-to-env is true', async () => {
     setupInputs({
       'site-id': SITE_ID,
-      'static-secrets': yamlSecrets('path: "prod/db/creds"\n  key: "password"\n  export-to-env: true'),
+      'static-secrets': yamlSecrets('path: "prod/app"\n  key: "password"\n  export-to-env: true'),
     });
     mockedCore.getIDToken.mockResolvedValue('token');
     mockedClient.fetchSecret.mockResolvedValue({ password: 'secret' });
@@ -193,76 +263,12 @@ describe('run', () => {
     await run();
 
     expect(mockedSecret.setSecretOutput).toHaveBeenCalledWith('password', 'secret', 'PASSWORD');
-    expect(mockedCore.setFailed).not.toHaveBeenCalled();
   });
 
-  test('fetches same path only once when extracting multiple keys', async () => {
+  test('exports all fields to env with prefix', async () => {
     setupInputs({
       'site-id': SITE_ID,
-      'static-secrets': yamlSecrets(
-        'path: "prod/db/creds"\n  key: "userName"',
-        'path: "prod/db/creds"\n  key: "password"',
-      ),
-    });
-    mockedCore.getIDToken.mockResolvedValue('token');
-    mockedClient.fetchSecret.mockResolvedValue({ userName: 'admin', password: 'secret' });
-
-    await run();
-
-    expect(mockedClient.fetchSecret).toHaveBeenCalledTimes(1);
-    expect(mockedSecret.setSecretOutput).toHaveBeenCalledWith('userName', 'admin', undefined);
-    expect(mockedSecret.setSecretOutput).toHaveBeenCalledWith('password', 'secret', undefined);
-  });
-
-  test('wildcard exports all keys from secret', async () => {
-    setupInputs({
-      'site-id': SITE_ID,
-      'static-secrets': yamlSecrets('path: "prod/app"\n  key: "*"'),
-    });
-    mockedCore.getIDToken.mockResolvedValue('token');
-    mockedClient.fetchSecret.mockResolvedValue({ connectionString: 'postgres://...', apiKey: 'sk-123' });
-
-    await run();
-
-    expect(mockedClient.fetchSecret).toHaveBeenCalledTimes(1);
-    expect(mockedSecret.setSecretOutput).toHaveBeenCalledWith('connectionString', 'postgres://...', undefined);
-    expect(mockedSecret.setSecretOutput).toHaveBeenCalledWith('apiKey', 'sk-123', undefined);
-    expect(mockedCore.setFailed).not.toHaveBeenCalled();
-  });
-
-  test('wildcard with export-to-env exports all keys', async () => {
-    setupInputs({
-      'site-id': SITE_ID,
-      'static-secrets': yamlSecrets('path: "prod/app"\n  key: "*"\n  export-to-env: true'),
-    });
-    mockedCore.getIDToken.mockResolvedValue('token');
-    mockedClient.fetchSecret.mockResolvedValue({ connectionString: 'postgres://...', apiKey: 'sk-123' });
-
-    await run();
-
-    expect(mockedSecret.setSecretOutput).toHaveBeenCalledWith('connectionString', 'postgres://...', 'CONNECTIONSTRING');
-    expect(mockedSecret.setSecretOutput).toHaveBeenCalledWith('apiKey', 'sk-123', 'APIKEY');
-  });
-
-  test('wildcard with prefix adds prefix to output names', async () => {
-    setupInputs({
-      'site-id': SITE_ID,
-      'static-secrets': yamlSecrets('path: "prod/app"\n  key: "*"\n  output-name: "my_app_*"'),
-    });
-    mockedCore.getIDToken.mockResolvedValue('token');
-    mockedClient.fetchSecret.mockResolvedValue({ apiKey: 'sk-123', dbHost: 'localhost' });
-
-    await run();
-
-    expect(mockedSecret.setSecretOutput).toHaveBeenCalledWith('my_app_apiKey', 'sk-123', undefined);
-    expect(mockedSecret.setSecretOutput).toHaveBeenCalledWith('my_app_dbHost', 'localhost', undefined);
-    expect(mockedCore.setFailed).not.toHaveBeenCalled();
-  });
-
-  test('wildcard with prefix and export-to-env uppercases the prefixed name', async () => {
-    setupInputs({
-      'site-id': SITE_ID,
-      'static-secrets': yamlSecrets('path: "prod/app"\n  key: "*"\n  output-name: "my_app_*"\n  export-to-env: true'),
+      'static-secrets': yamlSecrets('path: "prod/app"\n  output-name: "my_app_*"\n  export-to-env: true'),
     });
     mockedCore.getIDToken.mockResolvedValue('token');
     mockedClient.fetchSecret.mockResolvedValue({ apiKey: 'sk-123' });
@@ -270,9 +276,52 @@ describe('run', () => {
     await run();
 
     expect(mockedSecret.setSecretOutput).toHaveBeenCalledWith('my_app_apiKey', 'sk-123', 'MY_APP_APIKEY');
-    expect(mockedCore.setFailed).not.toHaveBeenCalled();
   });
 
+  test('converts hyphens to underscores in env var name', async () => {
+    setupInputs({
+      'site-id': SITE_ID,
+      'static-secrets': yamlSecrets('path: "prod/app"\n  key: "api-key"\n  export-to-env: true'),
+    });
+    mockedCore.getIDToken.mockResolvedValue('token');
+    mockedClient.fetchSecret.mockResolvedValue({ 'api-key': 'sk-123' });
+
+    await run();
+
+    expect(mockedSecret.setSecretOutput).toHaveBeenCalledWith('api-key', 'sk-123', 'API_KEY');
+  });
+
+  test('rejects invalid env var name when export-to-env is true', async () => {
+    setupInputs({
+      'site-id': SITE_ID,
+      'static-secrets': yamlSecrets('path: "prod/app"\n  key: "my.key"\n  export-to-env: true'),
+    });
+    mockedCore.getIDToken.mockResolvedValue('token');
+    mockedClient.fetchSecret.mockResolvedValue({ 'my.key': 'value' });
+
+    await run();
+
+    expect(mockedCore.setFailed).toHaveBeenCalledWith(expect.stringContaining('Cannot convert "my.key"'));
+    expect(mockedSecret.setSecretOutput).not.toHaveBeenCalled();
+  });
+
+  // Caching
+  test('fetches same path only once', async () => {
+    setupInputs({
+      'site-id': SITE_ID,
+      'static-secrets': yamlSecrets('path: "prod/app"\n  key: "field1"', 'path: "prod/app"\n  key: "field2"'),
+    });
+    mockedCore.getIDToken.mockResolvedValue('token');
+    mockedClient.fetchSecret.mockResolvedValue({ field1: 'a', field2: 'b' });
+
+    await run();
+
+    expect(mockedClient.fetchSecret).toHaveBeenCalledTimes(1);
+    expect(mockedSecret.setSecretOutput).toHaveBeenCalledWith('field1', 'a', undefined);
+    expect(mockedSecret.setSecretOutput).toHaveBeenCalledWith('field2', 'b', undefined);
+  });
+
+  // Serialization
   test('serializes nested objects as JSON', async () => {
     setupInputs({
       'site-id': SITE_ID,
@@ -316,46 +365,7 @@ describe('run', () => {
     expect(mockedSecret.setSecretOutput).toHaveBeenCalledWith('hosts', JSON.stringify(['a', 'b']), undefined);
   });
 
-  test('converts hyphens to underscores in env var name', async () => {
-    setupInputs({
-      'site-id': SITE_ID,
-      'static-secrets': yamlSecrets('path: "prod/app"\n  key: "api-key"\n  export-to-env: true'),
-    });
-    mockedCore.getIDToken.mockResolvedValue('token');
-    mockedClient.fetchSecret.mockResolvedValue({ 'api-key': 'sk-123' });
-
-    await run();
-
-    expect(mockedSecret.setSecretOutput).toHaveBeenCalledWith('api-key', 'sk-123', 'API_KEY');
-    expect(mockedCore.setFailed).not.toHaveBeenCalled();
-  });
-
-  test('rejects invalid env var name when export-to-env is true', async () => {
-    setupInputs({
-      'site-id': SITE_ID,
-      'static-secrets': yamlSecrets('path: "prod/app"\n  key: "my.key"\n  export-to-env: true'),
-    });
-    mockedCore.getIDToken.mockResolvedValue('token');
-    mockedClient.fetchSecret.mockResolvedValue({ 'my.key': 'value' });
-
-    await run();
-
-    expect(mockedCore.setFailed).toHaveBeenCalledWith(expect.stringContaining('Cannot convert "my.key"'));
-    expect(mockedSecret.setSecretOutput).not.toHaveBeenCalled();
-  });
-
-  test('rejects invalid site-id', async () => {
-    setupInputs({
-      'site-id': 'not-a-uuid',
-      'static-secrets': yamlSecrets('path: "path"\n  key: "key"'),
-    });
-
-    await run();
-
-    expect(mockedCore.setFailed).toHaveBeenCalledWith('Invalid site-id. Must be a valid UUID.');
-    expect(mockedCore.getIDToken).not.toHaveBeenCalled();
-  });
-
+  // Duplicate detection
   test('rejects duplicate output names', async () => {
     setupInputs({
       'site-id': SITE_ID,
@@ -373,33 +383,33 @@ describe('run', () => {
     expect(mockedSecret.setSecretOutput).not.toHaveBeenCalled();
   });
 
-  test('rejects wildcard collision with explicit entry', async () => {
+  test('rejects all-fields collision with explicit entry', async () => {
     setupInputs({
       'site-id': SITE_ID,
-      'static-secrets': yamlSecrets('path: "prod/app"\n  key: "*"', 'path: "prod/other"\n  key: "password"'),
+      'static-secrets': yamlSecrets('path: "prod/app"', 'path: "prod/other"\n  key: "field1"'),
     });
     mockedCore.getIDToken.mockResolvedValue('token');
     mockedClient.fetchSecret
-      .mockResolvedValueOnce({ password: 'from-app', apiKey: 'sk-123' })
-      .mockResolvedValueOnce({ password: 'from-other' });
+      .mockResolvedValueOnce({ field1: 'from-app' })
+      .mockResolvedValueOnce({ field1: 'from-other' });
 
     await run();
 
-    expect(mockedCore.setFailed).toHaveBeenCalledWith('Duplicate output name "password". Each output must be unique.');
+    expect(mockedCore.setFailed).toHaveBeenCalledWith('Duplicate output name "field1". Each output must be unique.');
     expect(mockedSecret.setSecretOutput).not.toHaveBeenCalled();
   });
 
-  test('rejects when key is not found in secret object', async () => {
+  // Validation
+  test('rejects invalid site-id', async () => {
     setupInputs({
-      'site-id': SITE_ID,
-      'static-secrets': yamlSecrets('path: "prod/db/creds"\n  key: "missing"'),
+      'site-id': 'not-a-uuid',
+      'static-secrets': yamlSecrets('path: "path"\n  key: "key"'),
     });
-    mockedCore.getIDToken.mockResolvedValue('token');
-    mockedClient.fetchSecret.mockResolvedValue({ password: 'secret' });
 
     await run();
 
-    expect(mockedCore.setFailed).toHaveBeenCalledWith('Key "missing" not found in secret at "prod/db/creds".');
+    expect(mockedCore.setFailed).toHaveBeenCalledWith('Invalid site-id. Must be a valid UUID.');
+    expect(mockedCore.getIDToken).not.toHaveBeenCalled();
   });
 
   test('rejects empty OIDC token', async () => {
