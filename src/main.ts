@@ -75,7 +75,9 @@ const VALID_ENV_NAME_REGEX = /^[A-Z_][A-Z0-9_]*$/;
 export function toEnvName(name: string): string {
   const envName = name.replace(/-/g, '_').toUpperCase();
   if (!VALID_ENV_NAME_REGEX.test(envName)) {
-    throw new Error(`Cannot convert "${name}" to a valid environment variable name. Only alphanumeric characters, hyphens, and underscores are allowed.`);
+    throw new Error(
+      `Cannot convert "${name}" to a valid environment variable name. Only alphanumeric characters, hyphens, and underscores are allowed.`,
+    );
   }
   return envName;
 }
@@ -132,9 +134,7 @@ export async function run(): Promise<void> {
       const outputNames = new Set<string>();
       for (const req of requests) {
         const names =
-          req.key === '*'
-            ? Object.keys(cache.get(req.path)!).map((k) => `${req.prefix}${k}`)
-            : [req.outputName];
+          req.key === '*' ? Object.keys(cache.get(req.path)!).map((k) => `${req.prefix}${k}`) : [req.outputName];
 
         for (const name of names) {
           if (outputNames.has(name)) {

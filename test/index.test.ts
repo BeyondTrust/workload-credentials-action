@@ -42,7 +42,9 @@ describe('parseSecretInput', () => {
 
   test('parses wildcard entry', () => {
     const input = '- path: "prod/app"\n  key: "*"';
-    expect(parseSecretInput(input)).toEqual([{ path: 'prod/app', key: '*', outputName: '*', exportToEnv: false, prefix: '' }]);
+    expect(parseSecretInput(input)).toEqual([
+      { path: 'prod/app', key: '*', outputName: '*', exportToEnv: false, prefix: '' },
+    ]);
   });
 
   test('throws when input is not a YAML list', () => {
@@ -156,7 +158,12 @@ describe('run', () => {
     await run();
 
     expect(mockedCore.getIDToken).toHaveBeenCalledWith(SITE_ID);
-    expect(mockedClient.fetchSecret).toHaveBeenCalledWith(expect.anything(), expect.any(String), SITE_ID, 'prod/db/creds');
+    expect(mockedClient.fetchSecret).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.any(String),
+      SITE_ID,
+      'prod/db/creds',
+    );
     expect(mockedSecret.setSecretOutput).toHaveBeenCalledWith('userName', 'admin', undefined);
     expect(mockedCore.setFailed).not.toHaveBeenCalled();
   });
@@ -192,7 +199,10 @@ describe('run', () => {
   test('fetches same path only once when extracting multiple keys', async () => {
     setupInputs({
       'site-id': SITE_ID,
-      'static-secrets': yamlSecrets('path: "prod/db/creds"\n  key: "userName"', 'path: "prod/db/creds"\n  key: "password"'),
+      'static-secrets': yamlSecrets(
+        'path: "prod/db/creds"\n  key: "userName"',
+        'path: "prod/db/creds"\n  key: "password"',
+      ),
     });
     mockedCore.getIDToken.mockResolvedValue('token');
     mockedClient.fetchSecret.mockResolvedValue({ userName: 'admin', password: 'secret' });
