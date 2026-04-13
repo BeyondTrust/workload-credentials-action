@@ -2,10 +2,6 @@ name: 'workload-credentials'
 description: 'A typescript action to get secrets from BeyondTrust workload credentials'
 author: BeyondTrust/volt
 inputs:
-  api-base-url:
-    description: 'The BeyondTrust API base URL (temporary override for testing).'
-    required: false
-    default: 'https://api.beyondtrust.io'
   api-version:
     description: 'The BeyondTrust API version.'
     required: false
@@ -13,8 +9,8 @@ inputs:
   site-id:
     description: 'The BeyondTrust site ID (UUID).'
     required: true
-  secrets:
-    description: 'Secrets to retrieve. Each line: <path> <key> [| <alias>]. Use * as key to export all fields.'
+  static-secrets:
+    description: 'YAML list of secrets to retrieve. Each entry: path, key (* for all), output-name (optional alias), export-to-env (optional, default false).'
     required: true
 runs:
   using: 'node20'

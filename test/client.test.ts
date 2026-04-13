@@ -33,6 +33,13 @@ describe('parsePath', () => {
     expect(parsePath('/password')).toEqual({ folder: '', name: 'password' });
   });
 
+  test('splits folder and name without leading slash', () => {
+    expect(parsePath('prod/db/password')).toEqual({
+      folder: 'prod/db',
+      name: 'password',
+    });
+  });
+
   test('strips trailing slashes', () => {
     expect(parsePath('/prod/db/password/')).toEqual({
       folder: 'prod/db',
@@ -122,6 +129,14 @@ describe('fetchSecret', () => {
 
   test('throws when response is missing secret field', async () => {
     mockHttpResponse(200, JSON.stringify({ other: 'data' }));
+
+    await expect(fetchSecret(client, API_BASE_URL, SITE_ID, 'path')).rejects.toThrow(
+      'BeyondTrust API response did not contain a secret value',
+    );
+  });
+
+  test('throws when secret field is an array', async () => {
+    mockHttpResponse(200, JSON.stringify({ secret: [1, 2, 3] }));
 
     await expect(fetchSecret(client, API_BASE_URL, SITE_ID, 'path')).rejects.toThrow(
       'BeyondTrust API response did not contain a secret value',

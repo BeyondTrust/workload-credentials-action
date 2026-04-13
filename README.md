@@ -25,13 +25,16 @@ All retrieved secret values are registered with GitHub's secret masking, prevent
 
 ## Usage
 
-Each entry follows the format: `<path> <key> [| <alias>]`
+The `secrets` input accepts a YAML list. Each entry supports:
 
-- `path` — the secret path in BeyondTrust (e.g. `prod/app`).
-- `key` — the field to extract from the secret object (e.g. `password`). Use `*` to export all fields.
-- `alias` — (optional) custom name for the step output and environment variable. If omitted, the key name is used. Not supported with `*`.
+| Field | Required | Description |
+|-------|----------|-------------|
+| `path` | Yes | The secret path in BeyondTrust (e.g. `prod/app`). |
+| `key` | Yes | The field to extract from the secret object. Use `*` to export all fields. |
+| `output-name` | No | Custom name for the step output. Defaults to the key name. With `key: "*"`, use a prefix ending in `*` (e.g. `my_app_*`). |
+| `export-to-env` | No | Export the value as an uppercased environment variable for subsequent steps. Defaults to `false`. |
 
-Using step outputs:
+### Basic usage
 
 ```yaml
 steps:
@@ -40,9 +43,11 @@ steps:
     id: secrets
     with:
       site-id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
-      secrets: |
-        prod/app connectionString
-        prod/app apiKey
+      static-secrets: |
+        - path: "prod/app"
+          key: "connectionString"
+        - path: "prod/app"
+          key: "apiKey"
 
   - name: Deploy
     env:
@@ -51,26 +56,33 @@ steps:
     run: npm run deploy
 ```
 
-Using environment variables (automatically available in subsequent steps):
+### Custom output names
 
 ```yaml
 steps:
   - name: Retrieve secrets
     uses: BeyondTrust/workload-credentials@v1
+    id: secrets
     with:
       site-id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
-      secrets: |
-        prod/app connectionString
-        prod/app apiKey
+      static-secrets: |
+        - path: "prod/app"
+          key: "connectionString"
+          output-name: "DATABASE_URL"
+        - path: "prod/app"
+          key: "apiKey"
+          output-name: "API_KEY"
 
   - name: Deploy
     env:
-      DATABASE_URL: ${{ env.CONNECTIONSTRING }}
-      API_KEY: ${{ env.APIKEY }}
+      DATABASE_URL: ${{ steps.secrets.outputs.DATABASE_URL }}
+      API_KEY: ${{ steps.secrets.outputs.API_KEY }}
     run: npm run deploy
 ```
 
-Use `| <alias>` to set a custom name for the step output and environment variable:
+### Export to environment variables
+
+Use `export-to-env: true` to automatically export secrets as uppercased environment variables for all subsequent steps:
 
 ```yaml
 steps:
@@ -78,15 +90,42 @@ steps:
     uses: BeyondTrust/workload-credentials@v1
     with:
       site-id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
-      secrets: |
-        prod/app connectionString | DATABASE_URL
-        prod/app apiKey | API_KEY
+      static-secrets: |
+        - path: "prod/app"
+          key: "connectionString"
+          output-name: "DATABASE_URL"
+          export-to-env: true
+        - path: "prod/app"
+          key: "apiKey"
+          output-name: "API_KEY"
+          export-to-env: true
 
   - name: Deploy
     run: npm run deploy
 ```
 
-Use `*` to export all fields from a secret as outputs and environment variables:
+### Wildcard
+
+Use `key: "*"` to export all fields from a secret:
+
+```yaml
+steps:
+  - name: Retrieve all app secrets
+    uses: BeyondTrust/workload-credentials@v1
+    id: secrets
+    with:
+      site-id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
+      static-secrets: |
+        - path: "prod/app"
+          key: "*"
+
+  - name: Deploy
+    env:
+      DATABASE_URL: ${{ steps.secrets.outputs.connectionString }}
+    run: npm run deploy
+```
+
+Combine `key: "*"` with `export-to-env: true` to export all fields as environment variables:
 
 ```yaml
 steps:
@@ -94,34 +133,53 @@ steps:
     uses: BeyondTrust/workload-credentials@v1
     with:
       site-id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
-      secrets: 'prod/app *'
+      static-secrets: |
+        - path: "prod/app"
+          key: "*"
+          export-to-env: true
 
   - name: Deploy
     run: npm run deploy
 ```
 
-If the secret at `prod/app` contains `{ "connectionString": "postgres://...", "apiKey": "sk-123..." }`, this sets outputs `connectionString` and `apiKey`, and environment variables `$CONNECTIONSTRING` and `$APIKEY`.
+### Wildcard with prefix
+
+Use `output-name` with a trailing `*` to prefix all wildcard-expanded output names:
+
+```yaml
+steps:
+  - name: Retrieve all app secrets
+    uses: BeyondTrust/workload-credentials@v1
+    id: secrets
+    with:
+      site-id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
+      static-secrets: |
+        - path: "prod/app"
+          key: "*"
+          output-name: "my_app_*"
+          export-to-env: true
+
+  - name: Deploy
+    run: npm run deploy
+```
+
+If the secret contains `{ "apiKey": "sk-123", "dbHost": "localhost" }`, this sets:
+- Step outputs: `my_app_apiKey`, `my_app_dbHost`
+- Env vars: `MY_APP_APIKEY`, `MY_APP_DBHOST`
 
 ## Inputs
 
 | Name | Required | Description |
 |------|----------|-------------|
 | `site-id` | Yes | The BeyondTrust site ID (UUID). |
-| `secrets` | Yes | Secrets to retrieve. Each line: `<path> <key> [| <alias>]`. Use `*` as key to export all fields. |
-| `api-base-url` | No | The BeyondTrust API base URL. Defaults to `https://api.beyondtrust.io`. |
+| `static-secrets` | Yes | YAML list of secrets to retrieve. See [Usage](#usage) for format. |
 | `api-version` | No | The BeyondTrust Workload Credentials API version. Defaults to `2026-02-16`. |
 
 ## Outputs
 
-Each secret is available as both a **step output** and an **environment variable**:
+Each secret is available as a **step output**, named by `output-name` (or `key` if not specified). Access via `steps.<id>.outputs.<name>`.
 
-- **Step output**: named by the alias (or key if no alias). Access via `steps.<id>.outputs.<name>`.
-- **Environment variable**: always uppercased. Automatically available in subsequent steps as `$NAME`.
-
-| Entry | Step output | Env var |
-|-------|------------|---------|
-| `prod/app apiKey` | `steps.<id>.outputs.apiKey` | `$APIKEY` |
-| `prod/app apiKey \| API_KEY` | `steps.<id>.outputs.API_KEY` | `$API_KEY` |
+When `export-to-env: true`, the value is also exported as an **uppercased environment variable** available in all subsequent steps.
 
 All values are masked in workflow logs.
 

@@ -11,10 +11,22 @@ describe('setSecretOutput', () => {
     const setOutputSpy = jest.spyOn(core, 'setOutput').mockImplementation();
     const exportVariableSpy = jest.spyOn(core, 'exportVariable').mockImplementation();
 
-    setSecretOutput('userName', 'DB_USERNAME', 'super-secret-value');
+    setSecretOutput('connectionString', 'super-secret-value');
 
     expect(setSecretSpy).toHaveBeenCalledWith('super-secret-value');
-    expect(setOutputSpy).toHaveBeenCalledWith('userName', 'super-secret-value');
-    expect(exportVariableSpy).toHaveBeenCalledWith('DB_USERNAME', 'super-secret-value');
+    expect(setOutputSpy).toHaveBeenCalledWith('connectionString', 'super-secret-value');
+    expect(exportVariableSpy).not.toHaveBeenCalled();
+  });
+
+  test('exports to env var when envName is provided', () => {
+    const setSecretSpy = jest.spyOn(core, 'setSecret').mockImplementation();
+    const setOutputSpy = jest.spyOn(core, 'setOutput').mockImplementation();
+    const exportVariableSpy = jest.spyOn(core, 'exportVariable').mockImplementation();
+
+    setSecretOutput('connectionString', 'super-secret-value', 'CONNECTION_STRING');
+
+    expect(setSecretSpy).toHaveBeenCalledWith('super-secret-value');
+    expect(setOutputSpy).toHaveBeenCalledWith('connectionString', 'super-secret-value');
+    expect(exportVariableSpy).toHaveBeenCalledWith('CONNECTION_STRING', 'super-secret-value');
   });
 });
