@@ -53,7 +53,7 @@ jobs:
         run: npm test -- --coverage
 
       - name: Upload coverage reports
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage-reports
           path: coverage/
@@ -63,7 +63,7 @@ jobs:
     needs: [set-project-version, test]
     permissions:
       contents: read
-    uses: BeyondTrust/workflows/.github/workflows/sonarqube.yaml@51e9f52f8446a28edae9c7277ce1a612b86570ea # v4.13.1
+    uses: BeyondTrust/workflows/.github/workflows/sonarqube.yaml@94e83e3a94caaededfa1d5ee73077c334d0b1399 # v4.13.2
     secrets:
       SONARQUBE_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
     with:
