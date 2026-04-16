@@ -40,6 +40,8 @@ jobs:
       - name: Setup JFrog
         uses: beyondtrust/setup-jfrog-cli@26d84636538c322aed2f822374a0b976b23caa81 # v2.4.3
         id: configure
+        env:
+          JF_ENV_1: ${{ secrets.ARTIFACTORY_DEPLOYER_2 }}
 
       - name: Configure JFrog
         run: |
