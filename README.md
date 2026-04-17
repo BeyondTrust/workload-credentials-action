@@ -1,6 +1,6 @@
 # BeyondTrust Workload Credentials
 
-Retrieve secrets from BeyondTrust Workload Credentials in your GitHub Actions workflows.
+Retrieve secrets from BeyondTrust Workload Credentials within your GitHub Actions workflows.
 
 ## Authentication
 
