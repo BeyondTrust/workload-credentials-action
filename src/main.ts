@@ -11,6 +11,7 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 const SECRET_PATH_REGEX = /^\/?[a-zA-Z0-9\-_@~*^%]+(\/[a-zA-Z0-9\-_@~*^%]+)*$/;
 const OUTPUT_NAME_REGEX = /^[a-zA-Z_][a-zA-Z0-9_]*\*?$/;
 const FIELD_KEY_REGEX = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+const SERVICE_NAME_REGEX = /^[A-Za-z0-9_-]+$/;
 
 export interface SecretRequest {
   path: string;
@@ -104,10 +105,15 @@ export async function run(): Promise<void> {
 
     const apiVersion = getInput('api-version');
     const siteId = getInput('site-id', { required: true });
+    const serviceName = getInput('service-name', { required: true });
     const secretsInput = getInput('static-secrets', { required: true });
 
     if (!UUID_REGEX.test(siteId)) {
       throw new Error('Invalid site-id. Must be a valid UUID.');
+    }
+
+    if (!SERVICE_NAME_REGEX.test(serviceName)) {
+      throw new Error('Invalid service-name. Use letters, digits, hyphens, and underscores only.');
     }
 
     const requests = parseSecretInput(secretsInput);
@@ -123,7 +129,7 @@ export async function run(): Promise<void> {
       throw new Error('Failed to retrieve OIDC token. Ensure the workflow has "id-token: write" permission.');
     }
 
-    const client = createClient(oidcToken, apiVersion);
+    const client = createClient(oidcToken, apiVersion, serviceName);
     const cache = new Map<string, Record<string, unknown>>();
 
     try {

@@ -22559,12 +22559,13 @@ function parsePath(secretPath) {
     name: normalized.substring(lastSlash + 1)
   };
 }
-function createClient(oidcToken, apiVersion) {
+function createClient(oidcToken, apiVersion, serviceName) {
   return new HttpClient("beyondtrust-workload-credentials", [], {
     headers: {
       Authorization: `Bearer ${oidcToken}`,
       Accept: "application/json",
-      "bt-secrets-api-version": apiVersion
+      "bt-secrets-api-version": apiVersion,
+      "X-BT-Service-Name": serviceName
     },
     socketTimeout: REQUEST_TIMEOUT_MS
   });
@@ -22619,6 +22620,7 @@ var UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
 var SECRET_PATH_REGEX = /^\/?[a-zA-Z0-9\-_@~*^%]+(\/[a-zA-Z0-9\-_@~*^%]+)*$/;
 var OUTPUT_NAME_REGEX = /^[a-zA-Z_][a-zA-Z0-9_]*\*?$/;
 var FIELD_KEY_REGEX = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+var SERVICE_NAME_REGEX = /^[A-Za-z0-9_-]+$/;
 function parseSecretInput(input) {
   const parsed = load(input, { schema: JSON_SCHEMA });
   if (!Array.isArray(parsed)) {
@@ -22681,9 +22683,13 @@ async function run() {
     info(`workload-credentials v${LIB_VERSION}`);
     const apiVersion = getInput("api-version");
     const siteId = getInput("site-id", { required: true });
+    const serviceName = getInput("service-name", { required: true });
     const secretsInput = getInput("static-secrets", { required: true });
     if (!UUID_REGEX.test(siteId)) {
       throw new Error("Invalid site-id. Must be a valid UUID.");
+    }
+    if (!SERVICE_NAME_REGEX.test(serviceName)) {
+      throw new Error("Invalid service-name. Use letters, digits, hyphens, and underscores only.");
     }
     const requests = parseSecretInput(secretsInput);
     if (requests.length === 0) {
@@ -22694,7 +22700,7 @@ async function run() {
     if (!oidcToken) {
       throw new Error('Failed to retrieve OIDC token. Ensure the workflow has "id-token: write" permission.');
     }
-    const client = createClient(oidcToken, apiVersion);
+    const client = createClient(oidcToken, apiVersion, serviceName);
     const cache = /* @__PURE__ */ new Map();
     try {
       for (const req of requests) {

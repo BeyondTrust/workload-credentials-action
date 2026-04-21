@@ -51,13 +51,14 @@ describe('parsePath', () => {
 const API_BASE_URL = 'https://api.beyondtrust.io';
 const API_VERSION = '2026-02-16';
 const SITE_ID = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
+const SERVICE_NAME = 'ci-workflow';
 
 describe('fetchSecret', () => {
   let client: HttpClient;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    client = createClient('oidc-token', API_VERSION);
+    client = createClient('oidc-token', API_VERSION, SERVICE_NAME);
   });
 
   test('returns secret object', async () => {
@@ -69,7 +70,7 @@ describe('fetchSecret', () => {
     expect(MockedHttpClient.prototype.get).toHaveBeenCalled();
   });
 
-  test('creates client with bearer token and api version header', () => {
+  test('creates client with bearer token, api version, and service name headers', () => {
     expect(MockedHttpClient).toHaveBeenCalledWith(
       'beyondtrust-workload-credentials',
       [],
@@ -77,6 +78,7 @@ describe('fetchSecret', () => {
         headers: expect.objectContaining({
           Authorization: 'Bearer oidc-token',
           'bt-secrets-api-version': API_VERSION,
+          'X-BT-Service-Name': SERVICE_NAME,
         }),
       }),
     );

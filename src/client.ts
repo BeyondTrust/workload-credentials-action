@@ -21,12 +21,13 @@ export function parsePath(secretPath: string): { folder: string; name: string } 
   };
 }
 
-export function createClient(oidcToken: string, apiVersion: string): HttpClient {
+export function createClient(oidcToken: string, apiVersion: string, serviceName: string): HttpClient {
   return new HttpClient('beyondtrust-workload-credentials', [], {
     headers: {
       Authorization: `Bearer ${oidcToken}`,
       Accept: 'application/json',
       'bt-secrets-api-version': apiVersion,
+      'X-BT-Service-Name': serviceName,
     },
     socketTimeout: REQUEST_TIMEOUT_MS,
   });

@@ -167,6 +167,7 @@ describe('run', () => {
 
   const DEFAULT_INPUTS: Record<string, string> = {
     'api-version': '2026-02-16',
+    'service-name': 'ci-workflow',
   };
 
   function setupInputs(inputs: Record<string, string>) {
@@ -453,6 +454,35 @@ describe('run', () => {
 
     expect(mockedCore.setFailed).toHaveBeenCalledWith('Invalid site-id. Must be a valid UUID.');
     expect(mockedCore.getIDToken).not.toHaveBeenCalled();
+  });
+
+  test('rejects invalid service-name', async () => {
+    setupInputs({
+      'site-id': SITE_ID,
+      'service-name': 'bad service name!',
+      'static-secrets': yamlSecrets('path: "path"\n  key: "key"'),
+    });
+
+    await run();
+
+    expect(mockedCore.setFailed).toHaveBeenCalledWith(
+      'Invalid service-name. Use letters, digits, hyphens, and underscores only.',
+    );
+    expect(mockedCore.getIDToken).not.toHaveBeenCalled();
+  });
+
+  test('passes service-name to the client factory', async () => {
+    setupInputs({
+      'site-id': SITE_ID,
+      'service-name': 'ci-workflow',
+      'static-secrets': yamlSecrets('path: "prod/app"\n  key: "field1"'),
+    });
+    mockedCore.getIDToken.mockResolvedValue('token');
+    mockedClient.fetchSecret.mockResolvedValue({ field1: 'a' });
+
+    await run();
+
+    expect(mockedClient.createClient).toHaveBeenCalledWith('token', '2026-02-16', 'ci-workflow');
   });
 
   test('rejects empty OIDC token', async () => {
