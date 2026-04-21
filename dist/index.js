@@ -22617,6 +22617,8 @@ var LIB_VERSION = "0.0.0";
 var API_BASE_URL = "https://api.smop.bt-platform.net";
 var UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 var SECRET_PATH_REGEX = /^\/?[a-zA-Z0-9\-_@~*^%]+(\/[a-zA-Z0-9\-_@~*^%]+)*$/;
+var OUTPUT_NAME_REGEX = /^[a-zA-Z_][a-zA-Z0-9_]*\*?$/;
+var FIELD_KEY_REGEX = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 function parseSecretInput(input) {
   const parsed = load(input, { schema: JSON_SCHEMA });
   if (!Array.isArray(parsed)) {
@@ -22646,24 +22648,24 @@ function parseSecretInput(input) {
     if (!SECRET_PATH_REGEX.test(path)) {
       throw new Error(`Secret entry ${index + 1}: invalid path "${path}".`);
     }
+    if (outputName && !OUTPUT_NAME_REGEX.test(outputName)) {
+      throw new Error(
+        `Secret entry ${index + 1}: "output-name" "${outputName}" is invalid. Use letters, digits, and underscores only; must start with a letter or underscore. A trailing "*" is allowed for prefix mode.`
+      );
+    }
     const isPrefix = outputName.endsWith("*");
     const prefix = isPrefix ? outputName.slice(0, -1) : "";
     const alias = isPrefix ? "" : outputName;
     if (!key && alias) {
       throw new Error(`Secret entry ${index + 1}: "output-name" must end with "*" when "key" is not specified.`);
     }
+    if (key && !alias && !FIELD_KEY_REGEX.test(key)) {
+      throw new Error(
+        `Secret entry ${index + 1}: "key" "${key}" can't be used as an output name. Add "output-name" to alias it (e.g. output-name: "MY_NAME").`
+      );
+    }
     return { path, key, prefix, alias, exportToEnv };
   });
-}
-var VALID_ENV_NAME_REGEX = /^[A-Z_][A-Z0-9_]*$/;
-function toEnvName(name) {
-  const envName = name.replace(/-/g, "_").toUpperCase();
-  if (!VALID_ENV_NAME_REGEX.test(envName)) {
-    throw new Error(
-      `Cannot convert "${name}" to a valid environment variable name. Only alphanumeric characters, hyphens, and underscores are allowed.`
-    );
-  }
-  return envName;
 }
 function toStringValue(val) {
   if (val === null || val === void 0) return "";
@@ -22704,8 +22706,18 @@ async function run() {
         if (req.key && !(req.key in parsed)) {
           throw new Error(`Key "${req.key}" not found in secret at "${req.path}".`);
         }
+        if (!req.key) {
+          for (const k of Object.keys(parsed)) {
+            if (!FIELD_KEY_REGEX.test(k)) {
+              throw new Error(
+                `Secret at "${req.path}" contains field "${k}" which can't be used as an output name. Alias it explicitly: { path: "${req.path}", key: "${k}", output-name: "YOUR_NAME" }.`
+              );
+            }
+          }
+        }
       }
       const outputNames = /* @__PURE__ */ new Set();
+      const envNames = /* @__PURE__ */ new Set();
       for (const req of requests) {
         const keys = req.key ? [req.key] : Object.keys(cache.get(req.path));
         for (const k of keys) {
@@ -22714,6 +22726,15 @@ async function run() {
             throw new Error(`Duplicate output name "${name}". Each output must be unique.`);
           }
           outputNames.add(name);
+          if (req.exportToEnv) {
+            const envName = name.toUpperCase();
+            if (envNames.has(envName)) {
+              throw new Error(
+                `Duplicate environment variable name "${envName}". Each env var must be unique when "export-to-env" is true.`
+              );
+            }
+            envNames.add(envName);
+          }
         }
       }
       for (const req of requests) {
@@ -22725,7 +22746,7 @@ async function run() {
         for (const k of keys) {
           const name = resolveOutputName(req, k);
           const value = toStringValue(parsed[k]);
-          const envName = req.exportToEnv ? toEnvName(name) : void 0;
+          const envName = req.exportToEnv ? name.toUpperCase() : void 0;
           setSecretOutput(name, value, envName);
         }
       }

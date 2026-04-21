@@ -31,8 +31,29 @@ The `static-secrets` input accepts a YAML list. Each entry supports:
 |-------|----------|-------------|
 | `path` | Yes | The secret path in BeyondTrust (e.g. `prod/app`). |
 | `key` | No | A specific field to extract. Omit to export all fields. |
-| `output-name` | No | Alias for the output name, or a prefix if ending with `*`. |
+| `output-name` | No | Alias for the output name, or a prefix if ending with `*`. See [Naming rules](#naming-rules). |
 | `export-to-env` | No | Export as an uppercased environment variable. Defaults to `false`. |
+
+### Naming rules
+
+Output names must match:
+
+```
+^[a-zA-Z_][a-zA-Z0-9_]*$
+```
+
+Letters, digits, and underscores only; must start with a letter or underscore. A trailing `*` is allowed on `output-name` to indicate prefix mode.
+
+This applies to both `output-name` and the JSON field keys in your secret when `output-name` is omitted.
+
+If a secret contains a field with an unsupported name (e.g. `api-key`, `api.v2`), alias it explicitly with `key` + `output-name`:
+
+```yaml
+static-secrets: |
+  - path: "prod/app"
+    key: "api-key"
+    output-name: "API_KEY"
+```
 
 ### Export all fields
 
@@ -168,7 +189,7 @@ Each secret is available as a **step output**. The name is determined by:
 - `output-name` ending with `*` (prefix) + the field key
 - The original field key if no `output-name` is set
 
-When `export-to-env: true`, the value is also exported as an **uppercased environment variable** available in all subsequent steps. Hyphens in names are converted to underscores.
+When `export-to-env: true`, the value is also exported as an **uppercased environment variable** available in all subsequent steps.
 
 All values are masked in workflow logs.
 
