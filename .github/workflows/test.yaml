@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  build-and-test:
+  test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -20,12 +20,9 @@ jobs:
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version: 20.x
-          registry-url: https://artifactory.dev.beyondtrust.com/artifactory/api/npm/npm/
 
       - name: Install Dependencies
         run: npm ci --ignore-scripts
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.JFROG_READONLY_PLAIN_ACCESS_TOKEN }}
 
       - name: Lint, Test, Build, Package
         run: |

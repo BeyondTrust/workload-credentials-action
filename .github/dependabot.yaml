@@ -1,15 +1,4 @@
 version: 2
-registries:
-  npm-private-jfrog:
-    type: npm-registry
-    url: https://beyondtrust.jfrog.io/artifactory/api/npm/npm
-    username: ${{ secrets.JFROG_READONLY_PLAIN_ACCESS_TOKEN_USER }}
-    password: ${{ secrets.JFROG_READONLY_PLAIN_ACCESS_TOKEN }}
-  npm-private-arti:
-    type: npm-registry
-    url: https://artifactory.dev.beyondtrust.com/artifactory/api/npm/npm
-    username: ${{ secrets.JFROG_READONLY_PLAIN_ACCESS_TOKEN_USER }}
-    password: ${{ secrets.JFROG_READONLY_PLAIN_ACCESS_TOKEN }}
 updates:
   - package-ecosystem: github-actions
     directory: /
@@ -47,6 +36,3 @@ updates:
         dependency-type: production
         update-types:
           - major
-    registries:
-      - npm-private-jfrog
-      - npm-private-arti
