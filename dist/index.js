@@ -22561,12 +22561,6 @@ function parsePath(secretPath) {
 }
 function createClient(oidcToken, apiVersion) {
   return {
-    // Authorization is intentionally NOT placed in requestOptions.headers:
-    // @actions/http-client only strips Authorization from the per-request
-    // additionalHeaders parameter on cross-host redirect; constructor-level
-    // headers are merged back in afterwards, which would leak the bearer
-    // token to an attacker-controlled host. allowRedirects: false is
-    // defense-in-depth — the secrets API has no legitimate reason to 3xx.
     client: new HttpClient("beyondtrust-workload-credentials", [], {
       socketTimeout: REQUEST_TIMEOUT_MS,
       allowRedirects: false

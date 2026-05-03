@@ -112,8 +112,6 @@ describe('parseSecretInput', () => {
     expect(parseSecretInput('[]')).toEqual([]);
   });
 
-  // Regression tests for $GITHUB_OUTPUT heredoc injection via newlines or
-  // other unsafe characters in output-name / key.
   test('throws when output-name contains a newline (alias mode)', () => {
     const input = '- path: "prod/app"\n  key: "field"\n  output-name: "harmless\\nINJECTED<<EOF\\nattacker\\nEOF"';
     expect(() => parseSecretInput(input)).toThrow(/"output-name".*contains invalid characters/);
@@ -417,9 +415,6 @@ describe('run', () => {
     expect(mockedSecret.setSecretOutput).not.toHaveBeenCalled();
   });
 
-  // Defense in depth: even if a malicious or compromised API returns a
-  // secret field whose name contains a newline, it must not reach setOutput
-  // (no $GITHUB_OUTPUT heredoc injection).
   test('rejects API-supplied field name with newline before any output is set', async () => {
     setupInputs({
       'site-id': SITE_ID,

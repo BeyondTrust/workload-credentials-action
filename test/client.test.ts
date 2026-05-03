@@ -69,11 +69,6 @@ describe('fetchSecret', () => {
     expect(MockedHttpClient.prototype.get).toHaveBeenCalled();
   });
 
-  // Regression test for the cross-host redirect token-leak vulnerability:
-  // Authorization MUST be passed per-request (so @actions/http-client's strip
-  // logic on additionalHeaders is effective) and MUST NOT be in the
-  // constructor's requestOptions.headers (those are merged back in after the
-  // strip on each redirect). allowRedirects: false provides defense in depth.
   test('does not put Authorization in constructor headers', () => {
     const ctorArgs = MockedHttpClient.mock.calls[0];
     const requestOptions = ctorArgs[2] ?? {};
