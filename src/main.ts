@@ -10,6 +10,14 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 
 const SECRET_PATH_REGEX = /^\/?[a-zA-Z0-9\-_@~*^%]+(\/[a-zA-Z0-9\-_@~*^%]+)*$/;
 
+// Output names flow into @actions/core.setOutput, which writes a heredoc
+// block to $GITHUB_OUTPUT. The runner does NOT sanitize newlines or other
+// control characters in the key, so an attacker-controlled output name
+// containing a newline can break out of the heredoc and inject arbitrary
+// outputs that downstream steps would treat as legitimate. Restrict to a
+// strict allowlist (alnum, "_", "-", ".") wherever a name reaches setOutput.
+const OUTPUT_NAME_REGEX = /^[A-Za-z0-9_.-]+$/;
+
 export interface SecretRequest {
   path: string;
   key?: string;
@@ -57,6 +65,13 @@ export function parseSecretInput(input: string): SecretRequest[] {
       throw new Error(`Secret entry ${index + 1}: invalid path "${path}".`);
     }
 
+    if (key !== undefined && !OUTPUT_NAME_REGEX.test(key)) {
+      throw new Error(
+        `Secret entry ${index + 1}: "key" ${JSON.stringify(key)} contains invalid characters. ` +
+          `Only letters, digits, "_", "-", and "." are allowed.`,
+      );
+    }
+
     // output-name ending with * = prefix mode, otherwise = alias mode
     const isPrefix = outputName.endsWith('*');
     const prefix = isPrefix ? outputName.slice(0, -1) : '';
@@ -65,6 +80,16 @@ export function parseSecretInput(input: string): SecretRequest[] {
     // Alias without key: can't alias all fields to one name
     if (!key && alias) {
       throw new Error(`Secret entry ${index + 1}: "output-name" must end with "*" when "key" is not specified.`);
+    }
+
+    // Reject newlines / unsafe chars in output-name to prevent GITHUB_OUTPUT
+    // heredoc injection. Empty (no output-name, or "*") is allowed.
+    const outputNameBody = isPrefix ? prefix : alias;
+    if (outputNameBody.length > 0 && !OUTPUT_NAME_REGEX.test(outputNameBody)) {
+      throw new Error(
+        `Secret entry ${index + 1}: "output-name" ${JSON.stringify(outputName)} contains invalid characters. ` +
+          `Only letters, digits, "_", "-", ".", and a trailing "*" are allowed.`,
+      );
     }
 
     return { path, key, prefix, alias, exportToEnv };
@@ -136,13 +161,24 @@ export async function run(): Promise<void> {
         }
       }
 
-      // Check for duplicate output names
+      // Check for duplicate output names and validate every resolved name.
+      // The validation here is defense-in-depth: parse-time checks reject
+      // unsafe user-supplied "key" / "output-name", but a resolved name can
+      // also be derived from a field name returned by the secrets API
+      // (when "key" is omitted). Refuse to call setOutput with anything that
+      // could break out of the $GITHUB_OUTPUT heredoc format.
       const outputNames = new Set<string>();
       for (const req of requests) {
         const keys = req.key ? [req.key] : Object.keys(cache.get(req.path)!);
 
         for (const k of keys) {
           const name = resolveOutputName(req, k);
+          if (!OUTPUT_NAME_REGEX.test(name)) {
+            throw new Error(
+              `Resolved output name ${JSON.stringify(name)} contains invalid characters. ` +
+                `Only letters, digits, "_", "-", and "." are allowed.`,
+            );
+          }
           if (outputNames.has(name)) {
             throw new Error(`Duplicate output name "${name}". Each output must be unique.`);
           }

@@ -22626,6 +22626,7 @@ var LIB_VERSION = "0.0.0";
 var API_BASE_URL = "https://api.smop.bt-platform.net";
 var UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 var SECRET_PATH_REGEX = /^\/?[a-zA-Z0-9\-_@~*^%]+(\/[a-zA-Z0-9\-_@~*^%]+)*$/;
+var OUTPUT_NAME_REGEX = /^[A-Za-z0-9_.-]+$/;
 function parseSecretInput(input) {
   const parsed = load(input, { schema: JSON_SCHEMA });
   if (!Array.isArray(parsed)) {
@@ -22655,11 +22656,22 @@ function parseSecretInput(input) {
     if (!SECRET_PATH_REGEX.test(path)) {
       throw new Error(`Secret entry ${index + 1}: invalid path "${path}".`);
     }
+    if (key !== void 0 && !OUTPUT_NAME_REGEX.test(key)) {
+      throw new Error(
+        `Secret entry ${index + 1}: "key" ${JSON.stringify(key)} contains invalid characters. Only letters, digits, "_", "-", and "." are allowed.`
+      );
+    }
     const isPrefix = outputName.endsWith("*");
     const prefix = isPrefix ? outputName.slice(0, -1) : "";
     const alias = isPrefix ? "" : outputName;
     if (!key && alias) {
       throw new Error(`Secret entry ${index + 1}: "output-name" must end with "*" when "key" is not specified.`);
+    }
+    const outputNameBody = isPrefix ? prefix : alias;
+    if (outputNameBody.length > 0 && !OUTPUT_NAME_REGEX.test(outputNameBody)) {
+      throw new Error(
+        `Secret entry ${index + 1}: "output-name" ${JSON.stringify(outputName)} contains invalid characters. Only letters, digits, "_", "-", ".", and a trailing "*" are allowed.`
+      );
     }
     return { path, key, prefix, alias, exportToEnv };
   });
@@ -22719,6 +22731,11 @@ async function run() {
         const keys = req.key ? [req.key] : Object.keys(cache.get(req.path));
         for (const k of keys) {
           const name = resolveOutputName(req, k);
+          if (!OUTPUT_NAME_REGEX.test(name)) {
+            throw new Error(
+              `Resolved output name ${JSON.stringify(name)} contains invalid characters. Only letters, digits, "_", "-", and "." are allowed.`
+            );
+          }
           if (outputNames.has(name)) {
             throw new Error(`Duplicate output name "${name}". Each output must be unique.`);
           }
