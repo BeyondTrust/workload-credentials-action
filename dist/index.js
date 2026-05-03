@@ -22560,19 +22560,28 @@ function parsePath(secretPath) {
   };
 }
 function createClient(oidcToken, apiVersion) {
-  return new HttpClient("beyondtrust-workload-credentials", [], {
+  return {
+    // Authorization is intentionally NOT placed in requestOptions.headers:
+    // @actions/http-client only strips Authorization from the per-request
+    // additionalHeaders parameter on cross-host redirect; constructor-level
+    // headers are merged back in afterwards, which would leak the bearer
+    // token to an attacker-controlled host. allowRedirects: false is
+    // defense-in-depth — the secrets API has no legitimate reason to 3xx.
+    client: new HttpClient("beyondtrust-workload-credentials", [], {
+      socketTimeout: REQUEST_TIMEOUT_MS,
+      allowRedirects: false
+    }),
     headers: {
       Authorization: `Bearer ${oidcToken}`,
       Accept: "application/json",
       "bt-secrets-api-version": apiVersion
-    },
-    socketTimeout: REQUEST_TIMEOUT_MS
-  });
+    }
+  };
 }
-async function fetchSecret(client, apiBaseUrl, siteId, secretPath) {
+async function fetchSecret(authClient, apiBaseUrl, siteId, secretPath) {
   const { folder, name } = parsePath(secretPath);
   const url = buildUrl(apiBaseUrl, siteId, name, folder);
-  const response = await client.get(url);
+  const response = await authClient.client.get(url, { ...authClient.headers });
   const statusCode = response.message.statusCode ?? 0;
   const body = await response.readBody();
   if (statusCode !== 200) {
@@ -22732,7 +22741,7 @@ async function run() {
       info("All secrets retrieved successfully.");
     } finally {
       cache.clear();
-      client.dispose();
+      client.client.dispose();
     }
   } catch (error2) {
     if (error2 instanceof Error) {

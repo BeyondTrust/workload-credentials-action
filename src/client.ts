@@ -7,6 +7,11 @@ interface SecretsResponse {
   secret: Record<string, unknown>;
 }
 
+export interface AuthenticatedClient {
+  client: HttpClient;
+  headers: Record<string, string>;
+}
+
 export function parsePath(secretPath: string): { folder: string; name: string } {
   const normalized = secretPath.replace(/\/+$/, '');
   const lastSlash = normalized.lastIndexOf('/');
@@ -21,19 +26,28 @@ export function parsePath(secretPath: string): { folder: string; name: string } 
   };
 }
 
-export function createClient(oidcToken: string, apiVersion: string): HttpClient {
-  return new HttpClient('beyondtrust-workload-credentials', [], {
+export function createClient(oidcToken: string, apiVersion: string): AuthenticatedClient {
+  return {
+    // Authorization is intentionally NOT placed in requestOptions.headers:
+    // @actions/http-client only strips Authorization from the per-request
+    // additionalHeaders parameter on cross-host redirect; constructor-level
+    // headers are merged back in afterwards, which would leak the bearer
+    // token to an attacker-controlled host. allowRedirects: false is
+    // defense-in-depth — the secrets API has no legitimate reason to 3xx.
+    client: new HttpClient('beyondtrust-workload-credentials', [], {
+      socketTimeout: REQUEST_TIMEOUT_MS,
+      allowRedirects: false,
+    }),
     headers: {
       Authorization: `Bearer ${oidcToken}`,
       Accept: 'application/json',
       'bt-secrets-api-version': apiVersion,
     },
-    socketTimeout: REQUEST_TIMEOUT_MS,
-  });
+  };
 }
 
 export async function fetchSecret(
-  client: HttpClient,
+  authClient: AuthenticatedClient,
   apiBaseUrl: string,
   siteId: string,
   secretPath: string,
@@ -41,7 +55,8 @@ export async function fetchSecret(
   const { folder, name } = parsePath(secretPath);
   const url = buildUrl(apiBaseUrl, siteId, name, folder);
 
-  const response = await client.get(url);
+  // Spread headers so the library cannot mutate our stored copy across calls.
+  const response = await authClient.client.get(url, { ...authClient.headers });
 
   const statusCode = response.message.statusCode ?? 0;
   const body = await response.readBody();

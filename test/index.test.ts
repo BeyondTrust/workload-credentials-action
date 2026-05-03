@@ -142,7 +142,7 @@ describe('run', () => {
     mockedCore.info.mockImplementation();
     mockedCore.setFailed.mockImplementation();
     mockedSecret.setSecretOutput.mockImplementation();
-    mockedClient.createClient.mockReturnValue({ dispose: jest.fn() } as never);
+    mockedClient.createClient.mockReturnValue({ client: { dispose: jest.fn() }, headers: {} } as never);
   });
 
   const DEFAULT_INPUTS: Record<string, string> = {

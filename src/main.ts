@@ -170,7 +170,7 @@ export async function run(): Promise<void> {
       info('All secrets retrieved successfully.');
     } finally {
       cache.clear();
-      client.dispose();
+      client.client.dispose();
     }
   } catch (error) {
     if (error instanceof Error) {
