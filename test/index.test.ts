@@ -112,6 +112,31 @@ describe('parseSecretInput', () => {
     expect(parseSecretInput('[]')).toEqual([]);
   });
 
+  test('throws when output-name contains a newline (alias mode)', () => {
+    const input = '- path: "prod/app"\n  key: "field"\n  output-name: "harmless\\nINJECTED<<EOF\\nattacker\\nEOF"';
+    expect(() => parseSecretInput(input)).toThrow(/"output-name" "harmless\nINJECTED<<EOF\nattacker\nEOF" is invalid/);
+  });
+
+  test('throws when output-name contains a newline (prefix mode)', () => {
+    const input = '- path: "prod/app"\n  output-name: "pre\\nfix_*"';
+    expect(() => parseSecretInput(input)).toThrow(/"output-name" "pre\nfix_\*" is invalid/);
+  });
+
+  test('throws when output-name contains an equals sign', () => {
+    const input = '- path: "prod/app"\n  key: "field"\n  output-name: "name=evil"';
+    expect(() => parseSecretInput(input)).toThrow(/"output-name" "name\=evil" is invalid/);
+  });
+
+  test('throws when key contains a newline', () => {
+    const input = '- path: "prod/app"\n  key: "field\\nINJECTED"';
+    expect(() => parseSecretInput(input)).toThrow(/"key" "field\nINJECTED" can't be used as an output name/);
+  });
+
+  test('accepts bare "*" as prefix mode with empty prefix', () => {
+    const input = '- path: "prod/app"\n  output-name: "*"';
+    expect(parseSecretInput(input)).toEqual([{ path: 'prod/app', prefix: '', alias: '', exportToEnv: false }]);
+  });
+
   test('throws when output-name contains a hyphen', () => {
     expect(() => parseSecretInput('- path: "prod/app"\n  key: "k"\n  output-name: "api-key"')).toThrow(
       'Secret entry 1: "output-name" "api-key" is invalid.',
@@ -136,21 +161,21 @@ describe('parseSecretInput', () => {
   });
 
   test('throws when key has unsupported characters and output-name is not set', () => {
-    expect(() => parseSecretInput('- path: "prod/app"\n  key: "api-key"')).toThrow(
-      'Secret entry 1: "key" "api-key" can\'t be used as an output name. Add "output-name" to alias it',
+    expect(() => parseSecretInput('- path: "prod/app"\n  key: "api.key"')).toThrow(
+      'Secret entry 1: "key" "api.key" can\'t be used as an output name. Add "output-name" to alias it',
     );
   });
 
   test('throws when key has unsupported characters and output-name is a prefix', () => {
-    expect(() => parseSecretInput('- path: "prod/app"\n  key: "api-key"\n  output-name: "my_*"')).toThrow(
-      'Secret entry 1: "key" "api-key" can\'t be used as an output name',
+    expect(() => parseSecretInput('- path: "prod/app"\n  key: "api.key"\n  output-name: "my_*"')).toThrow(
+      'Secret entry 1: "key" "api.key" can\'t be used as an output name',
     );
   });
 
   test('accepts key with unsupported characters when aliased via output-name', () => {
-    const input = '- path: "prod/app"\n  key: "api-key"\n  output-name: "API_KEY"';
+    const input = '- path: "prod/app"\n  key: "api.key"\n  output-name: "API_KEY"';
     expect(parseSecretInput(input)).toEqual([
-      { path: 'prod/app', key: 'api-key', prefix: '', alias: 'API_KEY', exportToEnv: false },
+      { path: 'prod/app', key: 'api.key', prefix: '', alias: 'API_KEY', exportToEnv: false },
     ]);
   });
 });
@@ -162,7 +187,7 @@ describe('run', () => {
     mockedCore.info.mockImplementation();
     mockedCore.setFailed.mockImplementation();
     mockedSecret.setSecretOutput.mockImplementation();
-    mockedClient.createClient.mockReturnValue({ dispose: jest.fn() } as never);
+    mockedClient.createClient.mockReturnValue({ client: { dispose: jest.fn() }, headers: {} } as never);
   });
 
   const DEFAULT_INPUTS: Record<string, string> = {
@@ -424,6 +449,20 @@ describe('run', () => {
     await run();
 
     expect(mockedCore.setFailed).toHaveBeenCalledWith('Duplicate output name "DB_PASS". Each output must be unique.');
+    expect(mockedSecret.setSecretOutput).not.toHaveBeenCalled();
+  });
+
+  test('rejects API-supplied field name with newline before any output is set', async () => {
+    setupInputs({
+      'site-id': SITE_ID,
+      'static-secrets': yamlSecrets('path: "prod/app"'),
+    });
+    mockedCore.getIDToken.mockResolvedValue('token');
+    mockedClient.fetchSecret.mockResolvedValue({ 'evil\nINJECTED': 'value' });
+
+    await run();
+
+    expect(mockedCore.setFailed).toHaveBeenCalledWith(expect.stringMatching(/can't be used as an output name/));
     expect(mockedSecret.setSecretOutput).not.toHaveBeenCalled();
   });
 

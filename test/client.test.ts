@@ -1,5 +1,5 @@
 import { HttpClient } from '@actions/http-client';
-import { createClient, fetchSecret, parsePath } from '../src/client';
+import { AuthenticatedClient, createClient, fetchSecret, parsePath } from '../src/client';
 
 jest.mock('@actions/http-client');
 
@@ -54,7 +54,7 @@ const SITE_ID = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
 const SERVICE_NAME = 'ci-workflow';
 
 describe('fetchSecret', () => {
-  let client: HttpClient;
+  let client: AuthenticatedClient;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -70,16 +70,33 @@ describe('fetchSecret', () => {
     expect(MockedHttpClient.prototype.get).toHaveBeenCalled();
   });
 
-  test('creates client with bearer token, api version, and service name headers', () => {
-    expect(MockedHttpClient).toHaveBeenCalledWith(
-      'beyondtrust-workload-credentials',
-      [],
+  test('does not put Authorization in constructor headers', () => {
+    const ctorArgs = MockedHttpClient.mock.calls[0];
+    const requestOptions = ctorArgs[2] ?? {};
+    const ctorHeaders = (requestOptions.headers ?? {}) as Record<string, unknown>;
+
+    const headerKeys = Object.keys(ctorHeaders).map((k) => k.toLowerCase());
+    expect(headerKeys).not.toContain('authorization');
+  });
+
+  test('disables automatic redirect following', () => {
+    const ctorArgs = MockedHttpClient.mock.calls[0];
+    const requestOptions = ctorArgs[2] ?? {};
+    expect(requestOptions.allowRedirects).toBe(false);
+  });
+
+  test('passes Authorization and api version via per-request additionalHeaders', async () => {
+    mockHttpResponse(200, JSON.stringify({ secret: { k: 'v' } }));
+
+    await fetchSecret(client, API_BASE_URL, SITE_ID, 'password');
+
+    const additionalHeaders = MockedHttpClient.prototype.get.mock.calls[0][1] as Record<string, string>;
+    expect(additionalHeaders).toEqual(
       expect.objectContaining({
-        headers: expect.objectContaining({
-          Authorization: 'Bearer oidc-token',
-          'bt-secrets-api-version': API_VERSION,
-          'X-BT-Service-Name': SERVICE_NAME,
-        }),
+        Authorization: 'Bearer oidc-token',
+        Accept: 'application/json',
+        'bt-secrets-api-version': API_VERSION,
+        'X-BT-Service-Name': SERVICE_NAME,
       }),
     );
   });

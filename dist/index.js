@@ -22560,20 +22560,23 @@ function parsePath(secretPath) {
   };
 }
 function createClient(oidcToken, apiVersion, serviceName) {
-  return new HttpClient("beyondtrust-workload-credentials", [], {
+  return {
+    client: new HttpClient("beyondtrust-workload-credentials", [], {
+      socketTimeout: REQUEST_TIMEOUT_MS,
+      allowRedirects: false
+    }),
     headers: {
       Authorization: `Bearer ${oidcToken}`,
       Accept: "application/json",
       "bt-secrets-api-version": apiVersion,
       "X-BT-Service-Name": serviceName
-    },
-    socketTimeout: REQUEST_TIMEOUT_MS
-  });
+    }
+  };
 }
-async function fetchSecret(client, apiBaseUrl, siteId, secretPath) {
+async function fetchSecret(authClient, apiBaseUrl, siteId, secretPath) {
   const { folder, name } = parsePath(secretPath);
   const url = buildUrl(apiBaseUrl, siteId, name, folder);
-  const response = await client.get(url);
+  const response = await authClient.client.get(url, { ...authClient.headers });
   const statusCode = response.message.statusCode ?? 0;
   const body = await response.readBody();
   if (statusCode !== 200) {
@@ -22615,7 +22618,7 @@ function setSecretOutput(name, value, envName) {
 var LIB_VERSION = "0.0.0";
 
 // src/main.ts
-var API_BASE_URL = "https://api.smop.bt-platform.net";
+var API_BASE_URL = "https://api.beyondtrust.io";
 var UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 var SECRET_PATH_REGEX = /^\/?[a-zA-Z0-9\-_@~*^%]+(\/[a-zA-Z0-9\-_@~*^%]+)*$/;
 var OUTPUT_NAME_REGEX = /^[a-zA-Z_][a-zA-Z0-9_]*\*?$/;
@@ -22650,16 +22653,17 @@ function parseSecretInput(input) {
     if (!SECRET_PATH_REGEX.test(path)) {
       throw new Error(`Secret entry ${index + 1}: invalid path "${path}".`);
     }
-    if (outputName && !OUTPUT_NAME_REGEX.test(outputName)) {
-      throw new Error(
-        `Secret entry ${index + 1}: "output-name" "${outputName}" is invalid. Use letters, digits, and underscores only; must start with a letter or underscore. A trailing "*" is allowed for prefix mode.`
-      );
-    }
     const isPrefix = outputName.endsWith("*");
     const prefix = isPrefix ? outputName.slice(0, -1) : "";
     const alias = isPrefix ? "" : outputName;
     if (!key && alias) {
       throw new Error(`Secret entry ${index + 1}: "output-name" must end with "*" when "key" is not specified.`);
+    }
+    const outputNameBody = isPrefix ? prefix : alias;
+    if (outputNameBody.length > 0 && !OUTPUT_NAME_REGEX.test(outputNameBody)) {
+      throw new Error(
+        `Secret entry ${index + 1}: "output-name" "${outputName}" is invalid. Use letters, digits, and underscores only; must start with a letter or underscore. A trailing "*" is allowed for prefix mode.`
+      );
     }
     if (key && !alias && !FIELD_KEY_REGEX.test(key)) {
       throw new Error(
@@ -22728,6 +22732,11 @@ async function run() {
         const keys = req.key ? [req.key] : Object.keys(cache.get(req.path));
         for (const k of keys) {
           const name = resolveOutputName(req, k);
+          if (!OUTPUT_NAME_REGEX.test(name)) {
+            throw new Error(
+              `Resolved output name ${JSON.stringify(name)} contains invalid characters. Only letters, digits, "_", "-", and "." are allowed.`
+            );
+          }
           if (outputNames.has(name)) {
             throw new Error(`Duplicate output name "${name}". Each output must be unique.`);
           }
@@ -22759,7 +22768,7 @@ async function run() {
       info("All secrets retrieved successfully.");
     } finally {
       cache.clear();
-      client.dispose();
+      client.client.dispose();
     }
   } catch (error2) {
     if (error2 instanceof Error) {

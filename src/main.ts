@@ -5,7 +5,7 @@ import { setSecretOutput } from './secret';
 import { LIB_VERSION } from './version';
 
 // TODO: Update to production URL before release
-const API_BASE_URL = 'https://api.smop.bt-platform.net';
+const API_BASE_URL = 'https://api.beyondtrust.io';
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const SECRET_PATH_REGEX = /^\/?[a-zA-Z0-9\-_@~*^%]+(\/[a-zA-Z0-9\-_@~*^%]+)*$/;
@@ -60,12 +60,6 @@ export function parseSecretInput(input: string): SecretRequest[] {
       throw new Error(`Secret entry ${index + 1}: invalid path "${path}".`);
     }
 
-    if (outputName && !OUTPUT_NAME_REGEX.test(outputName)) {
-      throw new Error(
-        `Secret entry ${index + 1}: "output-name" "${outputName}" is invalid. Use letters, digits, and underscores only; must start with a letter or underscore. A trailing "*" is allowed for prefix mode.`,
-      );
-    }
-
     // output-name ending with * = prefix mode, otherwise = alias mode
     const isPrefix = outputName.endsWith('*');
     const prefix = isPrefix ? outputName.slice(0, -1) : '';
@@ -76,8 +70,14 @@ export function parseSecretInput(input: string): SecretRequest[] {
       throw new Error(`Secret entry ${index + 1}: "output-name" must end with "*" when "key" is not specified.`);
     }
 
+    const outputNameBody = isPrefix ? prefix : alias;
+    if (outputNameBody.length > 0 && !OUTPUT_NAME_REGEX.test(outputNameBody)) {
+      throw new Error(
+        `Secret entry ${index + 1}: "output-name" "${outputName}" is invalid. Use letters, digits, and underscores only; must start with a letter or underscore. A trailing "*" is allowed for prefix mode.`,
+      );
+    }
+
     // When key is used as (or part of) the output name, it must be a valid identifier.
-    // Alias mode replaces the key entirely, so no validation needed there.
     if (key && !alias && !FIELD_KEY_REGEX.test(key)) {
       throw new Error(
         `Secret entry ${index + 1}: "key" "${key}" can't be used as an output name. Add "output-name" to alias it (e.g. output-name: "MY_NAME").`,
@@ -166,6 +166,12 @@ export async function run(): Promise<void> {
 
         for (const k of keys) {
           const name = resolveOutputName(req, k);
+          if (!OUTPUT_NAME_REGEX.test(name)) {
+            throw new Error(
+              `Resolved output name ${JSON.stringify(name)} contains invalid characters. ` +
+                `Only letters, digits, "_", "-", and "." are allowed.`,
+            );
+          }
           if (outputNames.has(name)) {
             throw new Error(`Duplicate output name "${name}". Each output must be unique.`);
           }
@@ -203,7 +209,7 @@ export async function run(): Promise<void> {
       info('All secrets retrieved successfully.');
     } finally {
       cache.clear();
-      client.dispose();
+      client.client.dispose();
     }
   } catch (error) {
     if (error instanceof Error) {
