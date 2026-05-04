@@ -5,10 +5,13 @@ import { setSecretOutput } from './secret';
 import { LIB_VERSION } from './version';
 
 // TODO: Update to production URL before release
-const API_BASE_URL = 'https://api.smop.bt-platform.net';
+const API_BASE_URL = 'https://api.beyondtrust.io';
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const SECRET_PATH_REGEX = /^\/?[a-zA-Z0-9\-_@~*^%]+(\/[a-zA-Z0-9\-_@~*^%]+)*$/;
+
+// Restrict to a strict allowlist (alnum, "_", "-", ".") wherever a name reaches setOutput.
+const OUTPUT_NAME_REGEX = /^[A-Za-z0-9_.-]+$/;
 
 export interface SecretRequest {
   path: string;
@@ -57,6 +60,13 @@ export function parseSecretInput(input: string): SecretRequest[] {
       throw new Error(`Secret entry ${index + 1}: invalid path "${path}".`);
     }
 
+    if (key !== undefined && !OUTPUT_NAME_REGEX.test(key)) {
+      throw new Error(
+        `Secret entry ${index + 1}: "key" ${JSON.stringify(key)} contains invalid characters. ` +
+          `Only letters, digits, "_", "-", and "." are allowed.`,
+      );
+    }
+
     // output-name ending with * = prefix mode, otherwise = alias mode
     const isPrefix = outputName.endsWith('*');
     const prefix = isPrefix ? outputName.slice(0, -1) : '';
@@ -65,6 +75,14 @@ export function parseSecretInput(input: string): SecretRequest[] {
     // Alias without key: can't alias all fields to one name
     if (!key && alias) {
       throw new Error(`Secret entry ${index + 1}: "output-name" must end with "*" when "key" is not specified.`);
+    }
+
+    const outputNameBody = isPrefix ? prefix : alias;
+    if (outputNameBody.length > 0 && !OUTPUT_NAME_REGEX.test(outputNameBody)) {
+      throw new Error(
+        `Secret entry ${index + 1}: "output-name" ${JSON.stringify(outputName)} contains invalid characters. ` +
+          `Only letters, digits, "_", "-", ".", and a trailing "*" are allowed.`,
+      );
     }
 
     return { path, key, prefix, alias, exportToEnv };
@@ -136,13 +154,18 @@ export async function run(): Promise<void> {
         }
       }
 
-      // Check for duplicate output names
       const outputNames = new Set<string>();
       for (const req of requests) {
         const keys = req.key ? [req.key] : Object.keys(cache.get(req.path)!);
 
         for (const k of keys) {
           const name = resolveOutputName(req, k);
+          if (!OUTPUT_NAME_REGEX.test(name)) {
+            throw new Error(
+              `Resolved output name ${JSON.stringify(name)} contains invalid characters. ` +
+                `Only letters, digits, "_", "-", and "." are allowed.`,
+            );
+          }
           if (outputNames.has(name)) {
             throw new Error(`Duplicate output name "${name}". Each output must be unique.`);
           }
@@ -170,7 +193,7 @@ export async function run(): Promise<void> {
       info('All secrets retrieved successfully.');
     } finally {
       cache.clear();
-      client.dispose();
+      client.client.dispose();
     }
   } catch (error) {
     if (error instanceof Error) {

@@ -111,6 +111,38 @@ describe('parseSecretInput', () => {
   test('returns empty array for empty YAML list', () => {
     expect(parseSecretInput('[]')).toEqual([]);
   });
+
+  test('throws when output-name contains a newline (alias mode)', () => {
+    const input = '- path: "prod/app"\n  key: "field"\n  output-name: "harmless\\nINJECTED<<EOF\\nattacker\\nEOF"';
+    expect(() => parseSecretInput(input)).toThrow(/"output-name".*contains invalid characters/);
+  });
+
+  test('throws when output-name contains a newline (prefix mode)', () => {
+    const input = '- path: "prod/app"\n  output-name: "pre\\nfix_*"';
+    expect(() => parseSecretInput(input)).toThrow(/"output-name".*contains invalid characters/);
+  });
+
+  test('throws when output-name contains an equals sign', () => {
+    const input = '- path: "prod/app"\n  key: "field"\n  output-name: "name=evil"';
+    expect(() => parseSecretInput(input)).toThrow(/"output-name".*contains invalid characters/);
+  });
+
+  test('throws when key contains a newline', () => {
+    const input = '- path: "prod/app"\n  key: "field\\nINJECTED"';
+    expect(() => parseSecretInput(input)).toThrow(/"key".*contains invalid characters/);
+  });
+
+  test('accepts output-name with allowed punctuation', () => {
+    const input = '- path: "prod/app"\n  key: "field"\n  output-name: "my.app-name_1"';
+    expect(parseSecretInput(input)).toEqual([
+      { path: 'prod/app', key: 'field', prefix: '', alias: 'my.app-name_1', exportToEnv: false },
+    ]);
+  });
+
+  test('accepts bare "*" as prefix mode with empty prefix', () => {
+    const input = '- path: "prod/app"\n  output-name: "*"';
+    expect(parseSecretInput(input)).toEqual([{ path: 'prod/app', prefix: '', alias: '', exportToEnv: false }]);
+  });
 });
 
 describe('toEnvName', () => {
@@ -142,7 +174,7 @@ describe('run', () => {
     mockedCore.info.mockImplementation();
     mockedCore.setFailed.mockImplementation();
     mockedSecret.setSecretOutput.mockImplementation();
-    mockedClient.createClient.mockReturnValue({ dispose: jest.fn() } as never);
+    mockedClient.createClient.mockReturnValue({ client: { dispose: jest.fn() }, headers: {} } as never);
   });
 
   const DEFAULT_INPUTS: Record<string, string> = {
@@ -380,6 +412,20 @@ describe('run', () => {
     await run();
 
     expect(mockedCore.setFailed).toHaveBeenCalledWith('Duplicate output name "DB_PASS". Each output must be unique.');
+    expect(mockedSecret.setSecretOutput).not.toHaveBeenCalled();
+  });
+
+  test('rejects API-supplied field name with newline before any output is set', async () => {
+    setupInputs({
+      'site-id': SITE_ID,
+      'static-secrets': yamlSecrets('path: "prod/app"'),
+    });
+    mockedCore.getIDToken.mockResolvedValue('token');
+    mockedClient.fetchSecret.mockResolvedValue({ 'evil\nINJECTED': 'value' });
+
+    await run();
+
+    expect(mockedCore.setFailed).toHaveBeenCalledWith(expect.stringMatching(/contains invalid characters/));
     expect(mockedSecret.setSecretOutput).not.toHaveBeenCalled();
   });
 
