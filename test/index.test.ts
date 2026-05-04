@@ -155,6 +155,12 @@ describe('parseSecretInput', () => {
     );
   });
 
+  test('throws when output-name contains a space', () => {
+    expect(() => parseSecretInput('- path: "prod/app"\n  key: "k"\n  output-name: "DB PASSWORD"')).toThrow(
+      'Secret entry 1: "output-name" "DB PASSWORD" is invalid.',
+    );
+  });
+
   test('accepts output-name with trailing asterisk for prefix mode', () => {
     const input = '- path: "prod/app"\n  output-name: "my_app_*"';
     expect(parseSecretInput(input)).toEqual([{ path: 'prod/app', prefix: 'my_app_', alias: '', exportToEnv: false }]);
