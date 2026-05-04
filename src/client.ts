@@ -26,7 +26,7 @@ export function parsePath(secretPath: string): { folder: string; name: string } 
   };
 }
 
-export function createClient(oidcToken: string, apiVersion: string): AuthenticatedClient {
+export function createClient(oidcToken: string, apiVersion: string, serviceName: string): AuthenticatedClient {
   return {
     client: new HttpClient('beyondtrust-workload-credentials', [], {
       socketTimeout: REQUEST_TIMEOUT_MS,
@@ -36,6 +36,7 @@ export function createClient(oidcToken: string, apiVersion: string): Authenticat
       Authorization: `Bearer ${oidcToken}`,
       Accept: 'application/json',
       'bt-secrets-api-version': apiVersion,
+      'X-BT-Service-Name': serviceName,
     },
   };
 }

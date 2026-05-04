@@ -1,7 +1,7 @@
 import * as core from '@actions/core';
 import * as client from '../src/client';
 import * as secret from '../src/secret';
-import { run, parseSecretInput, toEnvName } from '../src/main';
+import { run, parseSecretInput } from '../src/main';
 
 jest.mock('@actions/core');
 jest.mock('../src/client');
@@ -114,56 +114,75 @@ describe('parseSecretInput', () => {
 
   test('throws when output-name contains a newline (alias mode)', () => {
     const input = '- path: "prod/app"\n  key: "field"\n  output-name: "harmless\\nINJECTED<<EOF\\nattacker\\nEOF"';
-    expect(() => parseSecretInput(input)).toThrow(/"output-name".*contains invalid characters/);
+    expect(() => parseSecretInput(input)).toThrow(/"output-name" "harmless\nINJECTED<<EOF\nattacker\nEOF" is invalid/);
   });
 
   test('throws when output-name contains a newline (prefix mode)', () => {
     const input = '- path: "prod/app"\n  output-name: "pre\\nfix_*"';
-    expect(() => parseSecretInput(input)).toThrow(/"output-name".*contains invalid characters/);
+    expect(() => parseSecretInput(input)).toThrow(/"output-name" "pre\nfix_\*" is invalid/);
   });
 
   test('throws when output-name contains an equals sign', () => {
     const input = '- path: "prod/app"\n  key: "field"\n  output-name: "name=evil"';
-    expect(() => parseSecretInput(input)).toThrow(/"output-name".*contains invalid characters/);
+    expect(() => parseSecretInput(input)).toThrow(/"output-name" "name\=evil" is invalid/);
   });
 
   test('throws when key contains a newline', () => {
     const input = '- path: "prod/app"\n  key: "field\\nINJECTED"';
-    expect(() => parseSecretInput(input)).toThrow(/"key".*contains invalid characters/);
-  });
-
-  test('accepts output-name with allowed punctuation', () => {
-    const input = '- path: "prod/app"\n  key: "field"\n  output-name: "my.app-name_1"';
-    expect(parseSecretInput(input)).toEqual([
-      { path: 'prod/app', key: 'field', prefix: '', alias: 'my.app-name_1', exportToEnv: false },
-    ]);
+    expect(() => parseSecretInput(input)).toThrow(/"key" "field\nINJECTED" can't be used as an output name/);
   });
 
   test('accepts bare "*" as prefix mode with empty prefix', () => {
     const input = '- path: "prod/app"\n  output-name: "*"';
     expect(parseSecretInput(input)).toEqual([{ path: 'prod/app', prefix: '', alias: '', exportToEnv: false }]);
   });
-});
 
-describe('toEnvName', () => {
-  test('uppercases and returns valid name', () => {
-    expect(toEnvName('apiKey')).toBe('APIKEY');
+  test('throws when output-name contains a hyphen', () => {
+    expect(() => parseSecretInput('- path: "prod/app"\n  key: "k"\n  output-name: "api-key"')).toThrow(
+      'Secret entry 1: "output-name" "api-key" is invalid.',
+    );
   });
 
-  test('replaces hyphens with underscores', () => {
-    expect(toEnvName('my-api-key')).toBe('MY_API_KEY');
+  test('throws when output-name starts with a digit', () => {
+    expect(() => parseSecretInput('- path: "prod/app"\n  key: "k"\n  output-name: "1api"')).toThrow(
+      'Secret entry 1: "output-name" "1api" is invalid.',
+    );
   });
 
-  test('handles prefix with hyphens', () => {
-    expect(toEnvName('my_app_db-host')).toBe('MY_APP_DB_HOST');
+  test('throws when output-name contains a dot', () => {
+    expect(() => parseSecretInput('- path: "prod/app"\n  key: "k"\n  output-name: "api.v2"')).toThrow(
+      'Secret entry 1: "output-name" "api.v2" is invalid.',
+    );
   });
 
-  test('throws on invalid characters', () => {
-    expect(() => toEnvName('my.key')).toThrow('Cannot convert "my.key" to a valid environment variable name');
+  test('throws when output-name contains a space', () => {
+    expect(() => parseSecretInput('- path: "prod/app"\n  key: "k"\n  output-name: "DB PASSWORD"')).toThrow(
+      'Secret entry 1: "output-name" "DB PASSWORD" is invalid.',
+    );
   });
 
-  test('throws on name starting with a number', () => {
-    expect(() => toEnvName('1key')).toThrow('Cannot convert "1key" to a valid environment variable name');
+  test('accepts output-name with trailing asterisk for prefix mode', () => {
+    const input = '- path: "prod/app"\n  output-name: "my_app_*"';
+    expect(parseSecretInput(input)).toEqual([{ path: 'prod/app', prefix: 'my_app_', alias: '', exportToEnv: false }]);
+  });
+
+  test('throws when key has unsupported characters and output-name is not set', () => {
+    expect(() => parseSecretInput('- path: "prod/app"\n  key: "api.key"')).toThrow(
+      'Secret entry 1: "key" "api.key" can\'t be used as an output name. Add "output-name" to alias it',
+    );
+  });
+
+  test('throws when key has unsupported characters and output-name is a prefix', () => {
+    expect(() => parseSecretInput('- path: "prod/app"\n  key: "api.key"\n  output-name: "my_*"')).toThrow(
+      'Secret entry 1: "key" "api.key" can\'t be used as an output name',
+    );
+  });
+
+  test('accepts key with unsupported characters when aliased via output-name', () => {
+    const input = '- path: "prod/app"\n  key: "api.key"\n  output-name: "API_KEY"';
+    expect(parseSecretInput(input)).toEqual([
+      { path: 'prod/app', key: 'api.key', prefix: '', alias: 'API_KEY', exportToEnv: false },
+    ]);
   });
 });
 
@@ -179,6 +198,7 @@ describe('run', () => {
 
   const DEFAULT_INPUTS: Record<string, string> = {
     'api-version': '2026-02-16',
+    'service-name': 'ci-workflow',
   };
 
   function setupInputs(inputs: Record<string, string>) {
@@ -310,30 +330,53 @@ describe('run', () => {
     expect(mockedSecret.setSecretOutput).toHaveBeenCalledWith('my_app_apiKey', 'sk-123', 'MY_APP_APIKEY');
   });
 
-  test('converts hyphens to underscores in env var name', async () => {
+  test('aliases a JSON key with unsupported characters via output-name', async () => {
     setupInputs({
       'site-id': SITE_ID,
-      'static-secrets': yamlSecrets('path: "prod/app"\n  key: "api-key"\n  export-to-env: true'),
+      'static-secrets': yamlSecrets(
+        'path: "prod/app"\n  key: "api-key"\n  output-name: "API_KEY"\n  export-to-env: true',
+      ),
     });
     mockedCore.getIDToken.mockResolvedValue('token');
     mockedClient.fetchSecret.mockResolvedValue({ 'api-key': 'sk-123' });
 
     await run();
 
-    expect(mockedSecret.setSecretOutput).toHaveBeenCalledWith('api-key', 'sk-123', 'API_KEY');
+    expect(mockedSecret.setSecretOutput).toHaveBeenCalledWith('API_KEY', 'sk-123', 'API_KEY');
   });
 
-  test('rejects invalid env var name when export-to-env is true', async () => {
+  test('rejects JSON field with unsupported characters in export-all mode', async () => {
     setupInputs({
       'site-id': SITE_ID,
-      'static-secrets': yamlSecrets('path: "prod/app"\n  key: "my.key"\n  export-to-env: true'),
+      'static-secrets': yamlSecrets('path: "prod/app"'),
     });
     mockedCore.getIDToken.mockResolvedValue('token');
-    mockedClient.fetchSecret.mockResolvedValue({ 'my.key': 'value' });
+    mockedClient.fetchSecret.mockResolvedValue({ 'api-key': 'sk-123' });
 
     await run();
 
-    expect(mockedCore.setFailed).toHaveBeenCalledWith(expect.stringContaining('Cannot convert "my.key"'));
+    expect(mockedCore.setFailed).toHaveBeenCalledWith(
+      expect.stringContaining('Secret at "prod/app" contains field "api-key" which can\'t be used as an output name'),
+    );
+    expect(mockedSecret.setSecretOutput).not.toHaveBeenCalled();
+  });
+
+  test('rejects duplicate env var names when export-to-env differs only by case', async () => {
+    setupInputs({
+      'site-id': SITE_ID,
+      'static-secrets': yamlSecrets(
+        'path: "prod/db"\n  key: "password"\n  output-name: "db_pass"\n  export-to-env: true',
+        'path: "prod/redis"\n  key: "password"\n  output-name: "DB_PASS"\n  export-to-env: true',
+      ),
+    });
+    mockedCore.getIDToken.mockResolvedValue('token');
+    mockedClient.fetchSecret.mockResolvedValue({ password: 'secret' });
+
+    await run();
+
+    expect(mockedCore.setFailed).toHaveBeenCalledWith(
+      expect.stringContaining('Duplicate environment variable name "DB_PASS"'),
+    );
     expect(mockedSecret.setSecretOutput).not.toHaveBeenCalled();
   });
 
@@ -425,7 +468,7 @@ describe('run', () => {
 
     await run();
 
-    expect(mockedCore.setFailed).toHaveBeenCalledWith(expect.stringMatching(/contains invalid characters/));
+    expect(mockedCore.setFailed).toHaveBeenCalledWith(expect.stringMatching(/can't be used as an output name/));
     expect(mockedSecret.setSecretOutput).not.toHaveBeenCalled();
   });
 
@@ -456,6 +499,35 @@ describe('run', () => {
 
     expect(mockedCore.setFailed).toHaveBeenCalledWith('Invalid site-id. Must be a valid UUID.');
     expect(mockedCore.getIDToken).not.toHaveBeenCalled();
+  });
+
+  test('rejects invalid service-name', async () => {
+    setupInputs({
+      'site-id': SITE_ID,
+      'service-name': 'bad service name!',
+      'static-secrets': yamlSecrets('path: "path"\n  key: "key"'),
+    });
+
+    await run();
+
+    expect(mockedCore.setFailed).toHaveBeenCalledWith(
+      'Invalid service-name. Use letters, digits, hyphens, and underscores only.',
+    );
+    expect(mockedCore.getIDToken).not.toHaveBeenCalled();
+  });
+
+  test('passes service-name to the client factory', async () => {
+    setupInputs({
+      'site-id': SITE_ID,
+      'service-name': 'ci-workflow',
+      'static-secrets': yamlSecrets('path: "prod/app"\n  key: "field1"'),
+    });
+    mockedCore.getIDToken.mockResolvedValue('token');
+    mockedClient.fetchSecret.mockResolvedValue({ field1: 'a' });
+
+    await run();
+
+    expect(mockedClient.createClient).toHaveBeenCalledWith('token', '2026-02-16', 'ci-workflow');
   });
 
   test('rejects empty OIDC token', async () => {
