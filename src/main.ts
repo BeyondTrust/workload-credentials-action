@@ -5,7 +5,7 @@ import { setSecretOutput } from './secret';
 import { LIB_VERSION } from './version';
 
 // TODO: Update to production URL before release
-const API_BASE_URL = 'https://api.smop.bt-platform.net';
+const API_BASE_URL = 'https://api.beyondtrust.io';
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const SECRET_PATH_REGEX = /^\/?[a-zA-Z0-9\-_@~*^%]+(\/[a-zA-Z0-9\-_@~*^%]+)*$/;
