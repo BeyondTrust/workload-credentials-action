@@ -22617,7 +22617,7 @@ function setSecretOutput(name, value, envName) {
 var LIB_VERSION = "0.0.0";
 
 // src/main.ts
-var API_BASE_URL = "https://api.smop.bt-platform.net";
+var API_BASE_URL = "https://api.beyondtrust.io";
 var UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 var SECRET_PATH_REGEX = /^\/?[a-zA-Z0-9\-_@~*^%]+(\/[a-zA-Z0-9\-_@~*^%]+)*$/;
 var OUTPUT_NAME_REGEX = /^[A-Za-z0-9_.-]+$/;
