@@ -33,12 +33,10 @@ Replace `site-id` with your BeyondTrust site ID. The `id-token: write` permissio
 
 | Name | Required | Description |
 |------|----------|-------------|
-| `site-id` | Yes | The BeyondTrust site ID (UUID). |
-| `service-name` | Yes | The service name of your OIDC trust configuration in BeyondTrust. |
+| `site-id` | Yes | The BeyondTrust site ID (UUID). Available on the confirmation page after successfully creating an OIDC issuer registration in the BeyondTrust OIDC Applications console. |
+| `service-name` | Yes | The service name specified when creating an OIDC issuer registration in the BeyondTrust OIDC Applications console. Also visible on the confirmation page after registration. |
 | `static-secrets` | Yes | YAML list of secrets to retrieve. |
-| `api-version` | No | The BeyondTrust Workload Credentials API version. Defaults to `2026-02-16`. |
-
-Your `site-id` and `service-name` are available in the BeyondTrust console when you register the OIDC trust configuration.
+| `api-version` | No | The BeyondTrust Workload Credentials API version. Defaults to `2026-04-28`. |
 
 The `static-secrets` input accepts a YAML list. Each entry supports:
 
@@ -210,6 +208,10 @@ steps:
   - name: Deploy
     run: npm run deploy
 ```
+
+## Contributing
+
+This project is open source but does not accept external contributions. If you have a bug report or feature request, please reach out to us through [BeyondTrust Support](https://www.beyondtrust.com/support).
 
 ## License
 
