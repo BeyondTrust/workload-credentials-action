@@ -1,4 +1,4 @@
-# BeyondTrust Workload Credentials
+# BeyondTrust Workload Credentials GitHub Action
 
 Retrieve secrets from BeyondTrust Workload Credentials within your GitHub Actions workflows.
 
@@ -33,8 +33,8 @@ Replace `site-id` with your BeyondTrust site ID. The `id-token: write` permissio
 
 | Name | Required | Description |
 |------|----------|-------------|
-| `site-id` | Yes | The BeyondTrust site ID (UUID). Available on the confirmation page after successfully creating an OIDC issuer registration in the BeyondTrust OIDC Applications console. |
-| `service-name` | Yes | The service name specified when creating an OIDC issuer registration in the BeyondTrust OIDC Applications console. Also visible on the confirmation page after registration. |
+| `site-id` | Yes | The BeyondTrust site ID (UUID). Available on the confirmation page after successfully creating an OIDC issuer registration in [BeyondTrust Pathfinder Platform](https://app.beyondtrust.io). |
+| `service-name` | Yes | The service name specified when creating an OIDC issuer registration in [BeyondTrust Pathfinder Platform](https://app.beyondtrust.io). |
 | `static-secrets` | Yes | YAML list of secrets to retrieve. |
 | `api-version` | No | The BeyondTrust Workload Credentials API version. Defaults to `2026-04-28`. |
 
