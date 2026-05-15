@@ -7,10 +7,10 @@ inputs:
     required: false
     default: '2026-04-28'
   site-id:
-    description: 'The BeyondTrust site ID (UUID). Available on the confirmation page after successfully creating an OIDC issuer registration in the BeyondTrust OIDC Applications console.'
+    description: 'The BeyondTrust site ID (UUID). Available on the confirmation page after successfully creating an OIDC issuer registration in BeyondTrust Pathfinder Platform.'
     required: true
   service-name:
-    description: 'The service name specified when creating an OIDC issuer registration in the BeyondTrust OIDC Applications console. Also visible on the confirmation page after registration.'
+    description: 'The service name specified when creating an OIDC issuer registration in BeyondTrust Pathfinder Platform.'
     required: true
   static-secrets:
     description: 'YAML list of secrets to retrieve. Each entry: path (required), key (optional, omit to export all fields), output-name (optional alias, or prefix if ending with *), export-to-env (optional, default false).'
