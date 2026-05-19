@@ -1,8 +1,8 @@
 {
-  "name": "@beyondtrust/workload-credentials",
+  "name": "@beyondtrust/workload-credentials-action",
   "version": "0.0.0",
   "private": true,
-  "description": "A typescript action to get secrets from workload credentials",
+  "description": "A typescript action to get secrets from BeyondTrust Workload Credentials",
   "scripts": {
     "build": "tsx ./build.ts",
     "format": "prettier --write \"**/*.{ts,yaml,yml}\"",
