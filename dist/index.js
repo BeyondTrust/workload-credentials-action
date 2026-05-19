@@ -22684,7 +22684,7 @@ function resolveOutputName(req, fieldKey) {
 }
 async function run() {
   try {
-    info(`workload-credentials v${LIB_VERSION}`);
+    info(`workload-credentials-action v${LIB_VERSION}`);
     const apiVersion = getInput("api-version");
     const siteId = getInput("site-id", { required: true });
     const serviceName = getInput("service-name", { required: true });

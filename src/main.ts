@@ -100,7 +100,7 @@ function resolveOutputName(req: SecretRequest, fieldKey: string): string {
 
 export async function run(): Promise<void> {
   try {
-    info(`workload-credentials v${LIB_VERSION}`);
+    info(`workload-credentials-action v${LIB_VERSION}`);
 
     const apiVersion = getInput('api-version');
     const siteId = getInput('site-id', { required: true });
