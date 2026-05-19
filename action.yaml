@@ -1,5 +1,5 @@
-name: 'workload-credentials'
-description: 'A typescript action to get secrets from BeyondTrust workload credentials'
+name: 'Workload Credentials Action'
+description: 'A typescript action to get secrets from BeyondTrust Workload Credentials'
 author: BeyondTrust/volt
 inputs:
   api-version:

@@ -12,7 +12,7 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: BeyondTrust/workload-credentials@v1
+      - uses: BeyondTrust/workload-credentials-action@v1
         with:
           site-id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
           service-name: 'ci-workflow'
@@ -92,7 +92,7 @@ The simplest form — exports every field from the secret as a step output:
 ```yaml
 steps:
   - name: Retrieve secrets
-    uses: BeyondTrust/workload-credentials@v1
+    uses: BeyondTrust/workload-credentials-action@v1
     id: secrets
     with:
       site-id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
@@ -114,7 +114,7 @@ Use `key` to extract a specific field:
 ```yaml
 steps:
   - name: Retrieve secrets
-    uses: BeyondTrust/workload-credentials@v1
+    uses: BeyondTrust/workload-credentials-action@v1
     id: secrets
     with:
       site-id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
@@ -137,7 +137,7 @@ Use `export-to-env: true` to automatically export secrets as uppercased environm
 ```yaml
 steps:
   - name: Retrieve secrets
-    uses: BeyondTrust/workload-credentials@v1
+    uses: BeyondTrust/workload-credentials-action@v1
     with:
       site-id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
       service-name: 'ci-workflow'
@@ -158,7 +158,7 @@ Use `output-name` ending with `*` to prefix output names. Works with or without 
 ```yaml
 steps:
   - name: Retrieve all fields with prefix
-    uses: BeyondTrust/workload-credentials@v1
+    uses: BeyondTrust/workload-credentials-action@v1
     id: secrets
     with:
       site-id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
@@ -192,7 +192,7 @@ This produces the output `my_app_field1`.
 ```yaml
 steps:
   - name: Retrieve secrets
-    uses: BeyondTrust/workload-credentials@v1
+    uses: BeyondTrust/workload-credentials-action@v1
     with:
       site-id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
       service-name: 'ci-workflow'
