@@ -2,6 +2,7 @@ DISABLE_LINTERS:
   - TYPESCRIPT_STANDARD # Prefer prettier
   - TYPESCRIPT_PRETTIER # Configured in integration workflow
   - MARKDOWN_MARKDOWN_LINK_CHECK # Redundant. Prefer lychee.
+  - MARKDOWN_MARKDOWN_TABLE_FORMATTER # Forces excessive column padding on tables with long descriptions; GitHub renders fine without it.
   - SPELL_CSPELL # Not helpful. Configuration is way too tedious just to catch the odd typo.
   - SPELL_LYCHEE
   - REPOSITORY_DUSTILOCK
