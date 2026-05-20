@@ -20,7 +20,7 @@ jobs:
   check-dist:
     # If this is a release workflow, the output will change due to version updates
     # in the version.ts file.
-    if: ${{ github.actor != 'beyondtrust-release-app[bot]' }}
+    if: ${{ !(github.event.sender.login == 'beyondtrust-release-app[bot]' && github.event.sender.type == 'Bot') }}
     permissions:
       contents: write
     runs-on: ubuntu-latest
@@ -40,7 +40,7 @@ jobs:
           npm run build
 
       - name: Dependabot check-in dist
-        if: ${{ github.actor == 'dependabot[bot]' }}
+        if: ${{ !(github.event.sender.login == 'beyondtrust-release-app[bot]' && github.event.sender.type == 'Bot') }}
         uses: stefanzweifel/git-auto-commit-action@04702edda442b2e678b25b537cec683a1493fcb9 # v7.1.0
         with:
           file_pattern: 'dist/*.js'
