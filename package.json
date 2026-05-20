@@ -1,6 +1,6 @@
 {
-  "name": "@beyondtrust/workload-credentials-action",
-  "version": "0.0.0",
+  "name": "workload-credentials-action",
+  "version": "1.0.0",
   "private": true,
   "description": "A typescript action to get secrets from BeyondTrust Workload Credentials",
   "scripts": {
@@ -11,12 +11,7 @@
     "test": "jest",
     "all": "npm run format && npm run lint && npm test && npm run build"
   },
-  "keywords": [
-    "actions",
-    "node",
-    "setup"
-  ],
-  "author": "BeyondTrust",
+  "author": "BeyondTrust Corporation",
   "dependencies": {
     "@actions/core": "^3.0.1",
     "@actions/http-client": "^4.0.1",
