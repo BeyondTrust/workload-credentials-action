@@ -15,7 +15,7 @@ const compat = new FlatCompat({
 });
 
 export default [{
-    ignores: ["dist/*", "**/dist/", "**/lib/", "**/node_modules/", "**/jest.config.js"],
+    ignores: ["dist/*", "**/dist/", "**/lib/", "**/node_modules/"],
 }, ...compat.extends("eslint:recommended", "plugin:@typescript-eslint/recommended"), {
     plugins: {
         "@typescript-eslint": typescriptEslint,
@@ -32,4 +32,10 @@ export default [{
     },
 
     rules: {},
+}, {
+    files: ["**/*.config.js", "**/*.config.cjs"],
+    languageOptions: {
+        globals: globals.node,
+        sourceType: "commonjs",
+    },
 }];

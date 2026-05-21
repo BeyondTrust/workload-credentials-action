@@ -32,7 +32,7 @@ Replace `site-id` with your BeyondTrust site ID. The `id-token: write` permissio
 ## Inputs
 
 | Name | Required | Description |
-|------|----------|-------------|
+| ------ | ---------- | ------------- |
 | `site-id` | Yes | The BeyondTrust site ID (UUID). Available on the confirmation page after successfully creating an OIDC issuer registration in [BeyondTrust Pathfinder Platform](https://app.beyondtrust.io). |
 | `service-name` | Yes | The service name specified when creating an OIDC issuer registration in [BeyondTrust Pathfinder Platform](https://app.beyondtrust.io). |
 | `static-secrets` | Yes | YAML list of secrets to retrieve. |
@@ -41,7 +41,7 @@ Replace `site-id` with your BeyondTrust site ID. The `id-token: write` permissio
 The `static-secrets` input accepts a YAML list. Each entry supports:
 
 | Field | Required | Description |
-|-------|----------|-------------|
+| ------- | ---------- | ------------- |
 | `path` | Yes | The secret path in BeyondTrust (e.g. `prod/app`). |
 | `key` | No | A specific field to extract. Omit to export all fields. |
 | `output-name` | No | Alias for the output name, or a prefix if ending with `*`. See [Naming rules](#naming-rules). |
@@ -62,7 +62,7 @@ All values are masked in workflow logs.
 
 Output names must match:
 
-```
+```text
 ^[a-zA-Z_][a-zA-Z0-9_]*$
 ```
 
