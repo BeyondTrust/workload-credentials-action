@@ -124,7 +124,7 @@ describe('parseSecretInput', () => {
 
   test('throws when output-name contains an equals sign', () => {
     const input = '- path: "prod/app"\n  key: "field"\n  output-name: "name=evil"';
-    expect(() => parseSecretInput(input)).toThrow(/"output-name" "name\=evil" is invalid/);
+    expect(() => parseSecretInput(input)).toThrow(/"output-name" "name=evil" is invalid/);
   });
 
   test('throws when key contains a newline', () => {
