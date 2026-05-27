@@ -68,9 +68,9 @@ Output names must match:
 
 Letters, digits, and underscores only; must start with a letter or underscore. A trailing `*` is allowed on `output-name` to indicate prefix mode.
 
-This applies to both `output-name` and the JSON field keys in your secret when `output-name` is omitted.
+This applies to `output-name` itself, and to JSON field keys whenever they become part of the output name — that is, when `output-name` is omitted, or when `output-name` ends with `*` (prefix mode, where the resolved name is `prefix + fieldKey`).
 
-If a secret contains a field with an unsupported name (e.g. `api-key`, `api.v2`), alias it explicitly with `key` + `output-name`:
+If a secret contains a field with an unsupported name (e.g. `api-key`, `api.v2`), use alias mode — `output-name` without a trailing `*` — to rename it:
 
 ```yaml
 static-secrets: |
@@ -78,6 +78,8 @@ static-secrets: |
     key: "api-key"
     output-name: "API_KEY"
 ```
+
+Prefix mode does not rename the field key, so it cannot rescue an unsupported key. For example, `key: "api-key"` with `output-name: "my_app_*"` would resolve to `my_app_api-key`, which is rejected because of the `-`.
 
 ## Secret masking
 

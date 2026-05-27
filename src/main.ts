@@ -11,6 +11,7 @@ const SECRET_PATH_REGEX = /^\/?[a-zA-Z0-9\-_@~*^%]+(\/[a-zA-Z0-9\-_@~*^%]+)*$/;
 const OUTPUT_NAME_REGEX = /^[a-zA-Z_][a-zA-Z0-9_]*\*?$/;
 const FIELD_KEY_REGEX = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 const SERVICE_NAME_REGEX = /^[A-Za-z0-9_-]+$/;
+const API_VERSION_REGEX = /^[12]\d{3}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 
 export interface SecretRequest {
   path: string;
@@ -78,9 +79,10 @@ export function parseSecretInput(input: string): SecretRequest[] {
 
     // When key is used as (or part of) the output name, it must be a valid identifier.
     if (key && !alias && !FIELD_KEY_REGEX.test(key)) {
-      throw new Error(
-        `Secret entry ${index + 1}: "key" "${key}" can't be used as an output name. Add "output-name" to alias it (e.g. output-name: "MY_NAME").`,
-      );
+      const suggestion = isPrefix
+        ? `Use "output-name" in alias mode (without "*") to rename it, e.g. output-name: "MY_NAME".`
+        : `Add "output-name" to alias it, e.g. output-name: "MY_NAME".`;
+      throw new Error(`Secret entry ${index + 1}: "key" "${key}" can't be used as an output name. ${suggestion}`);
     }
 
     return { path, key, prefix, alias, exportToEnv };
@@ -106,6 +108,10 @@ export async function run(): Promise<void> {
     const siteId = getInput('site-id', { required: true });
     const serviceName = getInput('service-name', { required: true });
     const secretsInput = getInput('static-secrets', { required: true });
+
+    if (!API_VERSION_REGEX.test(apiVersion)) {
+      throw new Error('Invalid api-version. Must be in YYYY-MM-DD format.');
+    }
 
     if (!UUID_REGEX.test(siteId)) {
       throw new Error('Invalid site-id. Must be a valid UUID.');
@@ -168,7 +174,7 @@ export async function run(): Promise<void> {
           if (!OUTPUT_NAME_REGEX.test(name)) {
             throw new Error(
               `Resolved output name ${JSON.stringify(name)} contains invalid characters. ` +
-                `Only letters, digits, "_", "-", and "." are allowed.`,
+                `Only letters, digits, and underscores are allowed; must start with a letter or underscore.`,
             );
           }
           if (outputNames.has(name)) {

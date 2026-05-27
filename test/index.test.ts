@@ -174,7 +174,7 @@ describe('parseSecretInput', () => {
 
   test('throws when key has unsupported characters and output-name is a prefix', () => {
     expect(() => parseSecretInput('- path: "prod/app"\n  key: "api.key"\n  output-name: "my_*"')).toThrow(
-      'Secret entry 1: "key" "api.key" can\'t be used as an output name',
+      'Secret entry 1: "key" "api.key" can\'t be used as an output name. Use "output-name" in alias mode (without "*") to rename it',
     );
   });
 
@@ -513,6 +513,27 @@ describe('run', () => {
     expect(mockedCore.setFailed).toHaveBeenCalledWith(
       'Invalid service-name. Use letters, digits, hyphens, and underscores only.',
     );
+    expect(mockedCore.getIDToken).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ['not-a-date'],
+    ['2026/04/28'],
+    ['26-04-28'],
+    ['2026-13-01'],
+    ['2026-04-32'],
+    ['2026-00-15'],
+    ['2026-04-28\r\nX-Injected: yes'],
+  ])('rejects invalid api-version: %s', async (apiVersion) => {
+    setupInputs({
+      'api-version': apiVersion,
+      'site-id': SITE_ID,
+      'static-secrets': yamlSecrets('path: "path"\n  key: "key"'),
+    });
+
+    await run();
+
+    expect(mockedCore.setFailed).toHaveBeenCalledWith('Invalid api-version. Must be in YYYY-MM-DD format.');
     expect(mockedCore.getIDToken).not.toHaveBeenCalled();
   });
 
