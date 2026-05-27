@@ -79,9 +79,10 @@ export function parseSecretInput(input: string): SecretRequest[] {
 
     // When key is used as (or part of) the output name, it must be a valid identifier.
     if (key && !alias && !FIELD_KEY_REGEX.test(key)) {
-      throw new Error(
-        `Secret entry ${index + 1}: "key" "${key}" can't be used as an output name. Add "output-name" to alias it (e.g. output-name: "MY_NAME").`,
-      );
+      const suggestion = isPrefix
+        ? `Use "output-name" in alias mode (without "*") to rename it, e.g. output-name: "MY_NAME".`
+        : `Add "output-name" to alias it, e.g. output-name: "MY_NAME".`;
+      throw new Error(`Secret entry ${index + 1}: "key" "${key}" can't be used as an output name. ${suggestion}`);
     }
 
     return { path, key, prefix, alias, exportToEnv };
@@ -173,7 +174,7 @@ export async function run(): Promise<void> {
           if (!OUTPUT_NAME_REGEX.test(name)) {
             throw new Error(
               `Resolved output name ${JSON.stringify(name)} contains invalid characters. ` +
-                `Only letters, digits, "_", "-", and "." are allowed.`,
+                `Only letters, digits, and underscores are allowed; must start with a letter or underscore.`,
             );
           }
           if (outputNames.has(name)) {

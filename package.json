@@ -12,9 +12,14 @@
     "all": "npm run format && npm run lint && npm test && npm run build"
   },
   "keywords": [
-    "actions",
-    "node",
-    "setup"
+    "github-actions",
+    "beyondtrust",
+    "secrets",
+    "security",
+    "devops",
+    "continuous-integration",
+    "utilities",
+    "oidc"
   ],
   "author": "BeyondTrust",
   "dependencies": {

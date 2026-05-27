@@ -174,7 +174,7 @@ describe('parseSecretInput', () => {
 
   test('throws when key has unsupported characters and output-name is a prefix', () => {
     expect(() => parseSecretInput('- path: "prod/app"\n  key: "api.key"\n  output-name: "my_*"')).toThrow(
-      'Secret entry 1: "key" "api.key" can\'t be used as an output name',
+      'Secret entry 1: "key" "api.key" can\'t be used as an output name. Use "output-name" in alias mode (without "*") to rename it',
     );
   });
 
