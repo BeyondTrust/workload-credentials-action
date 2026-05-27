@@ -11,6 +11,7 @@ const SECRET_PATH_REGEX = /^\/?[a-zA-Z0-9\-_@~*^%]+(\/[a-zA-Z0-9\-_@~*^%]+)*$/;
 const OUTPUT_NAME_REGEX = /^[a-zA-Z_][a-zA-Z0-9_]*\*?$/;
 const FIELD_KEY_REGEX = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 const SERVICE_NAME_REGEX = /^[A-Za-z0-9_-]+$/;
+const API_VERSION_REGEX = /^[12]\d{3}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 
 export interface SecretRequest {
   path: string;
@@ -106,6 +107,10 @@ export async function run(): Promise<void> {
     const siteId = getInput('site-id', { required: true });
     const serviceName = getInput('service-name', { required: true });
     const secretsInput = getInput('static-secrets', { required: true });
+
+    if (!API_VERSION_REGEX.test(apiVersion)) {
+      throw new Error('Invalid api-version. Must be in YYYY-MM-DD format.');
+    }
 
     if (!UUID_REGEX.test(siteId)) {
       throw new Error('Invalid site-id. Must be a valid UUID.');

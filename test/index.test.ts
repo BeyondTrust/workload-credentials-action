@@ -516,6 +516,27 @@ describe('run', () => {
     expect(mockedCore.getIDToken).not.toHaveBeenCalled();
   });
 
+  test.each([
+    ['not-a-date'],
+    ['2026/04/28'],
+    ['26-04-28'],
+    ['2026-13-01'],
+    ['2026-04-32'],
+    ['2026-00-15'],
+    ['2026-04-28\r\nX-Injected: yes'],
+  ])('rejects invalid api-version: %s', async (apiVersion) => {
+    setupInputs({
+      'api-version': apiVersion,
+      'site-id': SITE_ID,
+      'static-secrets': yamlSecrets('path: "path"\n  key: "key"'),
+    });
+
+    await run();
+
+    expect(mockedCore.setFailed).toHaveBeenCalledWith('Invalid api-version. Must be in YYYY-MM-DD format.');
+    expect(mockedCore.getIDToken).not.toHaveBeenCalled();
+  });
+
   test('passes service-name to the client factory', async () => {
     setupInputs({
       'site-id': SITE_ID,
