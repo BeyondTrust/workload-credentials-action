@@ -14,7 +14,7 @@ The Workload Credentials action is a GitHub integration that retrieves secrets f
 
 Bugs should be submitted through [BeyondTrust Support](https://www.beyondtrust.com/support). Any bugs should be submitted against _Workload Credentials Support_. Our support team will ensure the escalation is raised to the proper team internally.
 
-If the bug is a security vulnerability, instead please refer to the [responsible disclosure section of our security policy](https://www.beyondtrust.com/security#disclosure).
+If the bug is a security vulnerability, instead please refer to the [responsible disclosure section of our security policy](https://www.beyondtrust.com/disclosure).
 
 ### Feature Requests
 
