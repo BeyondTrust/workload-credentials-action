@@ -4,6 +4,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
+      day: monday
+    cool-down: "14 days"
+    commit-message:
+      prefix: "ci(deps)"
     groups:
       minor-gh-actions:
         update-types:
@@ -17,6 +21,11 @@ updates:
       - '**/*'
     schedule:
       interval: weekly
+      day: monday
+    cool-down: "14 days"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "build(deps)"
     groups:
       minor-npm-development:
         dependency-type: development

@@ -18,10 +18,8 @@ permissions:
 
 jobs:
   check-dist:
-    # If this is a release workflow, the output will change due to version updates
-    # in the version.ts file. Use sender.login (sticky to original event) so the
-    # skip survives workflow re-runs by a human.
-    if: ${{ !(github.event.sender.login == 'beyondtrust-release-app[bot]' && github.event.sender.type == 'Bot') }}
+    # release-please keeps dist/index.js in sync via extra-files in
+    # release-please-config.json, so a rebuild produces no diff on release PRs.
     permissions:
       contents: write
     runs-on: ubuntu-latest
@@ -40,15 +38,21 @@ jobs:
         run: |
           npm run build
 
-      - name: Dependabot check-in dist
-        if: ${{ github.event.sender.login == 'dependabot[bot]' && github.event.sender.type == 'Bot' }}
+      - name: Bot check-in dist
+        if: |
+          ${{ (github.event.sender.login == 'dependabot[bot]' ||
+               github.event.sender.login == 'github-actions[bot]') &&
+              github.event.sender.type == 'Bot' }}
         uses: stefanzweifel/git-auto-commit-action@04702edda442b2e678b25b537cec683a1493fcb9 # v7.1.0
         with:
           file_pattern: 'dist/*.js'
           commit_user_name: ${{ github.event.sender.login }}
 
-      - name: Dependabot check-out updated branch
-        if: ${{ github.event.sender.login == 'dependabot[bot]' && github.event.sender.type == 'Bot' }}
+      - name: Bot check-out updated branch
+        if: |
+          ${{ (github.event.sender.login == 'dependabot[bot]' ||
+               github.event.sender.login == 'github-actions[bot]') &&
+              github.event.sender.type == 'Bot' }}
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Compare the expected and actual dist/ directories
