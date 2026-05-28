@@ -5,7 +5,8 @@ updates:
     schedule:
       interval: weekly
       day: monday
-    cool-down: "14 days"
+    cooldown:
+      default-days: 14
     commit-message:
       prefix: "ci(deps)"
     groups:
@@ -22,7 +23,8 @@ updates:
     schedule:
       interval: weekly
       day: monday
-    cool-down: "14 days"
+    cooldown:
+      default-days: 14
     open-pull-requests-limit: 10
     commit-message:
       prefix: "build(deps)"

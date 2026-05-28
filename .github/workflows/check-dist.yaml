@@ -39,7 +39,7 @@ jobs:
           npm run build
 
       - name: Bot check-in dist
-        if: |
+        if: >-
           ${{ (github.event.sender.login == 'dependabot[bot]' ||
                github.event.sender.login == 'github-actions[bot]') &&
               github.event.sender.type == 'Bot' }}
@@ -49,7 +49,7 @@ jobs:
           commit_user_name: ${{ github.event.sender.login }}
 
       - name: Bot check-out updated branch
-        if: |
+        if: >-
           ${{ (github.event.sender.login == 'dependabot[bot]' ||
                github.event.sender.login == 'github-actions[bot]') &&
               github.event.sender.type == 'Bot' }}

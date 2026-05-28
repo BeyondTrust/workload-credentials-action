@@ -24,10 +24,10 @@ jobs:
       pull-requests: write
     outputs:
       release_created: ${{ steps.release.outputs.release_created || false }}
-      tag_name:        ${{ steps.release.outputs.tag_name }}
-      sha:             ${{ steps.release.outputs.sha }}
-      major:           ${{ steps.release.outputs.major }}
-      minor:           ${{ steps.release.outputs.minor }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      sha: ${{ steps.release.outputs.sha }}
+      major: ${{ steps.release.outputs.major }}
+      minor: ${{ steps.release.outputs.minor }}
     steps:
       - name: Run release-please
         id: release
@@ -49,9 +49,9 @@ jobs:
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         env:
           RELEASE_SHA: ${{ needs.release-please.outputs.sha }}
-          TAG_NAME:    ${{ needs.release-please.outputs.tag_name }}
-          MAJOR_TAG:   v${{ needs.release-please.outputs.major }}
-          MINOR_TAG:   v${{ needs.release-please.outputs.major }}.${{ needs.release-please.outputs.minor }}
+          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+          MAJOR_TAG: v${{ needs.release-please.outputs.major }}
+          MINOR_TAG: v${{ needs.release-please.outputs.major }}.${{ needs.release-please.outputs.minor }}
         with:
           script: |
             const sha      = process.env.RELEASE_SHA;
