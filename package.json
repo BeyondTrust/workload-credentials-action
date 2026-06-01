@@ -9,7 +9,7 @@
     "format:check": "prettier --check \"**/*.{ts,yaml,yml}\"",
     "lint": "eslint src/**/*.ts",
     "test": "jest",
-    "all": "npm run format && npm run lint && npm test && npm run build"
+    "all": "npm run format:check && npm run lint && npm test && npm run build"
   },
   "keywords": [
     "github-actions",

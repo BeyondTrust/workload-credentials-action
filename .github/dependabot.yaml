@@ -8,7 +8,7 @@ updates:
     cooldown:
       default-days: 14
     commit-message:
-      prefix: "ci(deps)"
+      prefix: 'ci(deps)'
     groups:
       minor-gh-actions:
         update-types:
@@ -27,7 +27,7 @@ updates:
       default-days: 14
     open-pull-requests-limit: 10
     commit-message:
-      prefix: "build(deps)"
+      prefix: 'build(deps)'
     groups:
       minor-npm-development:
         dependency-type: development
