@@ -21,7 +21,7 @@
     "utilities",
     "oidc"
   ],
-  "author": "BeyondTrust",
+  "author": "BeyondTrust Corporation",
   "dependencies": {
     "@actions/core": "^3.0.1",
     "@actions/http-client": "^4.0.1",

@@ -1,5 +1,5 @@
 name: 'Workload Credentials Action'
-description: 'A typescript action to get secrets from BeyondTrust Workload Credentials'
+description: 'Securely retrieve secrets from BeyondTrust Workload Credentials in your GitHub Actions workflows via OIDC'
 author: BeyondTrust Corporation
 inputs:
   api-version:
