@@ -16,6 +16,5 @@ jobs:
       contents: read
       pull-requests: write
     uses: ./.github/workflows/linter.yaml
-    secrets: inherit
     with:
       full: false
