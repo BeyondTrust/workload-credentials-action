@@ -25,6 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Set Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
@@ -43,10 +45,20 @@ jobs:
           ${{ (github.event.sender.login == 'dependabot[bot]' ||
                github.event.sender.login == 'github-actions[bot]') &&
               github.event.sender.type == 'Bot' }}
-        uses: stefanzweifel/git-auto-commit-action@04702edda442b2e678b25b537cec683a1493fcb9 # v7.1.0
-        with:
-          file_pattern: 'dist/*.js'
-          commit_user_name: ${{ github.event.sender.login }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SENDER_LOGIN: ${{ github.event.sender.login }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          git config user.name "${SENDER_LOGIN}"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- 'dist/*.js'
+          if git diff --staged --quiet; then
+            echo "No changes in dist/*.js to commit"
+            exit 0
+          fi
+          git commit -m "chore: rebuild dist/ after bot changes"
+          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/${HEAD_REF}"
 
       - name: Bot check-out updated branch
         if: >-
@@ -54,6 +66,8 @@ jobs:
                github.event.sender.login == 'github-actions[bot]') &&
               github.event.sender.type == 'Bot' }}
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Compare the expected and actual dist/ directories
         run: |
