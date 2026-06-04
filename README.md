@@ -45,7 +45,7 @@ The `static-secrets` input accepts a YAML list. Each entry supports:
 | `path` | Yes | The secret path in BeyondTrust (e.g. `prod/app`). |
 | `key` | No | A specific field to extract. Omit to export all fields. |
 | `output-name` | No | Alias for the output name, or a prefix if ending with `*`. See [Naming rules](#naming-rules). |
-| `export-to-env` | No | Export as an uppercased environment variable. Defaults to `false`. |
+| `export-to-env` | No | Export as an uppercase environment variable. Defaults to `false`. |
 
 ## Outputs
 
@@ -54,7 +54,7 @@ Each secret is available as a **step output**. The name is determined by:
 - `output-name` ending with `*` (prefix) + the field key
 - The original field key if no `output-name` is set
 
-When `export-to-env: true`, the value is also exported as an **uppercased environment variable** available in all subsequent steps.
+When `export-to-env: true`, the value is also exported as an **uppercase environment variable** available in all subsequent steps.
 
 All values are masked in workflow logs.
 
@@ -68,9 +68,9 @@ Output names must match:
 
 Letters, digits, and underscores only; must start with a letter or underscore. A trailing `*` is allowed on `output-name` to indicate prefix mode.
 
-This applies to `output-name` itself, and to JSON field keys whenever they become part of the output name — that is, when `output-name` is omitted, or when `output-name` ends with `*` (prefix mode, where the resolved name is `prefix + fieldKey`).
+This applies to `output-name` itself, and to JSON field keys whenever they become part of the output name. That is, when `output-name` is omitted, or when `output-name` ends with `*` (prefix mode, where the resolved name is `prefix + fieldKey`).
 
-If a secret contains a field with an unsupported name (e.g. `api-key`, `api.v2`), use alias mode — `output-name` without a trailing `*` — to rename it:
+If a secret contains a field with an unsupported name (e.g. `api-key`, `api.v2`), use alias mode, `output-name` without a trailing `*`,  to rename it:
 
 ```yaml
 static-secrets: |
@@ -79,17 +79,17 @@ static-secrets: |
     output-name: "API_KEY"
 ```
 
-Prefix mode does not rename the field key, so it cannot rescue an unsupported key. For example, `key: "api-key"` with `output-name: "my_app_*"` would resolve to `my_app_api-key`, which is rejected because of the `-`.
+Prefix mode does not rename the field key, so it cannot rescue an unsupported key. For example, `key: "api-key"` with `output-name: "my_app_*"` resolves to `my_app_api-key`, which is rejected because of the `-`.
 
 ## Secret masking
 
-All retrieved secret values are registered with GitHub's secret masking, preventing them from appearing in workflow logs.
+Retrieved secret values are automatically masked in workflow logs using GitHub's secret scanning.
 
 ## Usage
 
 ### Export all fields
 
-The simplest form — exports every field from the secret as a step output:
+The simplest form. Exports every field from the secret as a step output:
 
 ```yaml
 steps:
@@ -134,7 +134,7 @@ steps:
 
 ### Export to environment variables
 
-Use `export-to-env: true` to automatically export secrets as uppercased environment variables for all subsequent steps:
+Use `export-to-env: true` to automatically export secrets as uppercase environment variables for all subsequent steps:
 
 ```yaml
 steps:
