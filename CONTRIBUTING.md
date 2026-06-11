@@ -19,3 +19,7 @@ If the bug is a security vulnerability, instead please refer to the [responsible
 ### Feature Requests
 
 Feature requests should also be submitted through [BeyondTrust Support](https://www.beyondtrust.com/support), also against _Workload Credentials Support_. Submitting through our support organization will ensure the request gets sent to the proper Product Management team for consideration.
+
+### Submitting Changes
+
+Run `npm run all` (format check, lint, tests, build) before opening a pull request, and **commit the rebuilt `dist/` directory together with your source changes** — the `check-dist` check rebuilds the bundle and fails when the committed `dist/` does not match.
