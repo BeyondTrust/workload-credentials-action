@@ -102,6 +102,8 @@ function resolveOutputName(req: SecretRequest, fieldKey: string): string {
 export async function run(): Promise<void> {
   try {
     // GITHUB_ACTION_REF is the ref consumers pinned this action to (e.g. v1, a tag, or a SHA).
+    // The runner exports it (github.action_ref) for steps running a remote action; it is
+    // unset for same-repo `uses: ./` steps and local tests, hence the fallback.
     info(`workload-credentials-action @ ${process.env.GITHUB_ACTION_REF ?? 'unreleased'}`);
 
     const apiVersion = getInput('api-version');

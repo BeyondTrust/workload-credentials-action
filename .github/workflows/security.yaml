@@ -11,6 +11,9 @@ on:
       - main
   schedule:
     - cron: '0 9 * * 1' # Every Monday at 09:00 UTC — catches newly-published CVEs
+  # Lets maintainers report the required Dependency Review check on the
+  # bot-created release PR, which cannot trigger workflows (see release.yaml).
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -23,7 +26,7 @@ jobs:
     name: Dependency Review
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    if: ${{ github.event_name == 'pull_request' }}
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
     permissions:
       contents: read # the action reads the dependency graph; no PR comment step, so no write needed
     steps:
@@ -34,6 +37,11 @@ jobs:
 
       - name: Dependency Review
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          # On workflow_dispatch (release-branch nudge) compare the dispatched
+          # ref against main; on PR events these resolve to the PR's own refs.
+          base-ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.event.pull_request.base.sha }}
+          head-ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.event.pull_request.head.sha }}
 
   npm-audit:
     name: npm audit

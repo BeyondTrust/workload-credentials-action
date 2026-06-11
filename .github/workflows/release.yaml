@@ -1,5 +1,3 @@
-name: Release
-
 # Release pipeline. release-please keeps a release PR up to date on every push
 # to main. That PR is metadata-only — CHANGELOG, package.json/package-lock.json
 # version, and the release-please manifest — and never touches dist/: the
@@ -16,8 +14,12 @@ name: Release
 #
 # Known limitation: PRs created with the default GITHUB_TOKEN do not trigger
 # other workflows, so the release PR's required checks will not start on their
-# own. Trigger them with workflow_dispatch against the release branch (or
-# close/reopen the PR) before merging.
+# own. Before merging, dispatch each required workflow against the release
+# branch (or close/reopen the PR to trigger everything at once):
+#   gh workflow run test.yaml       --ref release-please--branches--main
+#   gh workflow run check-dist.yaml --ref release-please--branches--main
+#   gh workflow run security.yaml   --ref release-please--branches--main
+name: Release
 
 on:
   push:
@@ -150,7 +152,9 @@ jobs:
 
   tag-major-minor:
     name: Move major and minor tags
-    needs: release-please
+    # Gated on security-gate: consumers track @v{major}, so moving the floating
+    # tags is the de facto release and must not happen when the gate fails.
+    needs: [release-please, security-gate]
     if: ${{ needs.release-please.outputs.release_created == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
