@@ -2,7 +2,6 @@ import { getInput, setFailed, getIDToken, info } from '@actions/core';
 import { load, JSON_SCHEMA } from 'js-yaml';
 import { createClient, fetchSecret } from './client';
 import { setSecretOutput } from './secret';
-import { LIB_VERSION } from './version';
 
 const API_BASE_URL = 'https://api.beyondtrust.io';
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -102,7 +101,8 @@ function resolveOutputName(req: SecretRequest, fieldKey: string): string {
 
 export async function run(): Promise<void> {
   try {
-    info(`workload-credentials-action v${LIB_VERSION}`);
+    // GITHUB_ACTION_REF is the ref consumers pinned this action to (e.g. v1, a tag, or a SHA).
+    info(`workload-credentials-action @ ${process.env.GITHUB_ACTION_REF ?? 'unreleased'}`);
 
     const apiVersion = getInput('api-version');
     const siteId = getInput('site-id', { required: true });

@@ -9,9 +9,11 @@
 # is stale. It runs on every PR and on every push to main, so anything pending
 # (e.g. a stale bundle merged on a Dependabot PR) surfaces immediately.
 #
-# The release-please release PR cannot trigger this workflow (PRs created with
-# the default GITHUB_TOKEN do not start workflows); the build-dist job in
-# release.yaml rebuilds and commits dist/ on that PR instead.
+# The release-please release PR is metadata-only (CHANGELOG, version fields,
+# manifest) and never changes the bundle, so the dist/ committed by
+# contributors is already the released bundle. Bot-created PRs cannot trigger
+# this workflow on their own; use workflow_dispatch against the release branch
+# (or close/reopen the PR) to report the required check there.
 name: Check dist/
 
 on:

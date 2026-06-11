@@ -1,26 +1,23 @@
 name: Release
 
 # Release pipeline. release-please keeps a release PR up to date on every push
-# to main (version bump + CHANGELOG). Regular PRs commit their own rebuilt
-# dist/ (verified by check-dist.yaml), but the release PR needs the build-dist
-# job below for two reasons:
-#   1. PRs created with the default GITHUB_TOKEN do not trigger workflows, so
-#      check-dist never runs on the release PR.
-#   2. The `// x-release-please-version` annotation in src/version.ts does not
-#      survive esbuild bundling, so release-please cannot patch the version
-#      inside dist/index.js via extra-files — only a rebuild after the
-#      src/version.ts bump bakes the released version into the bundle.
-# build-dist rebuilds dist/ on the release branch and commits it via the
-# GraphQL createCommitOnBranch API (GitHub-signed, satisfies the
-# required-signatures ruleset).
+# to main. That PR is metadata-only — CHANGELOG, package.json/package-lock.json
+# version, and the release-please manifest — and never touches dist/: the
+# bundle does not embed a version (the runtime logs GITHUB_ACTION_REF instead),
+# so the dist/ committed by contributors on regular PRs (enforced by the
+# required Check dist check) is already the released bundle.
 #
 # When the release PR is merged, release-please creates the tag + DRAFT
-# release at the merge commit (which already contains the fresh bundle); the
-# security gate evaluates the GHAS remediation-SLA policy, the bundle is
-# provenance-attested, an SBOM is attached, the floating v{major} /
-# v{major}.{minor} tags are moved, and the release is published. Everything
-# runs as dependent jobs in a SINGLE workflow run on the default GITHUB_TOKEN —
-# no PAT or GitHub App token.
+# release at the merge commit; the security gate evaluates the GHAS
+# remediation-SLA policy, the bundle is provenance-attested, an SBOM is
+# attached, the floating v{major} / v{major}.{minor} tags are moved, and the
+# release is published. Everything runs as dependent jobs in a SINGLE workflow
+# run on the default GITHUB_TOKEN — no PAT or GitHub App token.
+#
+# Known limitation: PRs created with the default GITHUB_TOKEN do not trigger
+# other workflows, so the release PR's required checks will not start on their
+# own. Trigger them with workflow_dispatch against the release branch (or
+# close/reopen the PR) before merging.
 
 on:
   push:
@@ -52,8 +49,6 @@ jobs:
       sha: ${{ steps.release.outputs.sha }}
       major: ${{ steps.release.outputs.major }}
       minor: ${{ steps.release.outputs.minor }}
-      prs_created: ${{ steps.release.outputs.prs_created || false }}
-      pr: ${{ steps.release.outputs.pr }}
     steps:
       - name: Run release-please
         id: release
@@ -62,87 +57,6 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
           token: ${{ secrets.GITHUB_TOKEN }}
-
-  build-dist:
-    name: Build dist on release PR
-    needs: release-please
-    if: ${{ needs.release-please.outputs.prs_created == 'true' && needs.release-please.outputs.pr }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: write
-    env:
-      RELEASE_BRANCH: ${{ fromJSON(needs.release-please.outputs.pr).headBranchName }}
-    steps:
-      - name: Checkout release branch
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-          ref: ${{ env.RELEASE_BRANCH }}
-
-      - name: Set Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
-        with:
-          node-version: 24.x
-
-      - name: Install dependencies
-        run: npm ci --ignore-scripts
-
-      - name: Rebuild the dist/ directory
-        run: npm run build
-
-      - name: Detect dist/ changes
-        id: changes
-        run: |
-          if git status --porcelain -- dist/ | grep -q .; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "dist/ already up to date on ${RELEASE_BRANCH}"
-          fi
-
-      - name: Commit dist/ to the release branch
-        if: ${{ steps.changes.outputs.changed == 'true' }}
-        # createCommitOnBranch produces a commit signed by GitHub on behalf of
-        # github-actions[bot], which passes the required-signatures ruleset
-        # (a runner-local `git commit` + push would be rejected as unsigned).
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        with:
-          script: |
-            const fs = require('fs');
-            const { execSync } = require('child_process');
-
-            const changed = execSync('git status --porcelain -- dist/', { encoding: 'utf8' })
-              .split('\n')
-              .filter(Boolean)
-              .map((line) => line.slice(3));
-
-            const additions = changed.map((path) => ({
-              path,
-              contents: fs.readFileSync(path).toString('base64'),
-            }));
-
-            const expectedHeadOid = execSync('git rev-parse HEAD', { encoding: 'utf8' }).trim();
-
-            await github.graphql(
-              `mutation ($input: CreateCommitOnBranchInput!) {
-                createCommitOnBranch(input: $input) {
-                  commit { oid }
-                }
-              }`,
-              {
-                input: {
-                  branch: {
-                    repositoryNameWithOwner: process.env.GITHUB_REPOSITORY,
-                    branchName: process.env.RELEASE_BRANCH,
-                  },
-                  expectedHeadOid,
-                  message: { headline: 'chore: build dist/ for release' },
-                  fileChanges: { additions },
-                },
-              },
-            );
-            core.info(`Committed ${changed.join(', ')} to ${process.env.RELEASE_BRANCH}`);
 
   security-gate:
     name: Security Gate
@@ -303,7 +217,12 @@ jobs:
     # the explicit result checks ensure we only publish when the gate, the
     # attestation, and the tag moves all succeeded. The SBOM is best-effort:
     # it is in `needs` only for ordering and does not block publish.
-    if: ${{ always() && needs.release-please.outputs.release_created == 'true' && needs.attest.result == 'success' && needs.tag-major-minor.result == 'success' }}
+    if: >-
+      ${{ always() &&
+          needs.release-please.outputs.release_created == 'true' &&
+          needs.security-gate.result == 'success' &&
+          needs.attest.result == 'success' &&
+          needs.tag-major-minor.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
