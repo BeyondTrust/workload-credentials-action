@@ -22,6 +22,11 @@ on:
   pull_request:
     branches:
       - main
+    # Only npm updates can change the bundle; github-actions ecosystem bumps
+    # never touch these files.
+    paths:
+      - package.json
+      - package-lock.json
 
 permissions: {}
 
@@ -44,9 +49,10 @@ jobs:
       - name: Checkout PR branch
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          # Credentials are deliberately persisted: this job pushes the
-          # rebuilt dist/ back to the PR branch.
-          persist-credentials: true
+          # The push step below supplies the token itself; keeping credentials
+          # out of .git/config means nothing from the freshly-bumped dependency
+          # tree (npm ci, the build) executes with a writable token on disk.
+          persist-credentials: false
           ref: ${{ github.event.pull_request.head.ref }}
 
       - name: Set Node.js
@@ -74,10 +80,13 @@ jobs:
             git commit -m "build(deps): rebuild dist/"
             # Fails on non-fast-forward if the branch moved since checkout
             # (e.g. a Dependabot force-push) instead of clobbering it.
-            git push origin "HEAD:refs/heads/$HEAD_REF"
+            git push \
+              "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+              "HEAD:refs/heads/$HEAD_REF"
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
 
       - name: Dispatch required checks on the new head
