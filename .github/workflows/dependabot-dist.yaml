@@ -1,0 +1,117 @@
+# Dependabot bumps package.json/package-lock.json but never rebuilds dist/, so
+# any update that changes the bundle output (runtime dependencies, or
+# build-chain devDependencies like esbuild) fails the required Check dist. This
+# workflow rebuilds dist/ on Dependabot PRs and commits the result back to the
+# PR branch.
+#
+# The commit is created via the GraphQL createCommitOnBranch API so GitHub
+# signs it, keeping the default GITHUB_TOKEN sufficient. Commits made with
+# GITHUB_TOKEN do not re-trigger pull_request workflows, so the required checks
+# (Test, Check dist) are dispatched explicitly against the PR branch — their
+# check runs attach to the new head SHA and satisfy the required checks (the
+# same nudge release PRs use).
+name: Dependabot dist
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  rebuild-dist:
+    name: Rebuild dist
+    if: >-
+      ${{ github.actor == 'dependabot[bot]' &&
+          github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # commit the rebuilt dist/ to the PR branch
+      actions: write # dispatch the required checks on the new head
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24.x
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Rebuild the dist/ directory
+        run: npm run build
+
+      - name: Detect dist/ changes
+        id: diff
+        run: |
+          files=$(git diff --name-only --diff-filter=d -- dist/)
+          if [ -n "$files" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "files<<EOF"
+              echo "$files"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "dist/ is up to date; nothing to commit."
+          fi
+
+      - name: Commit rebuilt dist/ to the PR branch
+        if: ${{ steps.diff.outputs.changed == 'true' }}
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          CHANGED_FILES: ${{ steps.diff.outputs.files }}
+        with:
+          script: |
+            const fs = require('fs');
+
+            const additions = process.env.CHANGED_FILES.trim()
+              .split('\n')
+              .map((path) => ({
+                path,
+                contents: fs.readFileSync(path).toString('base64'),
+              }));
+
+            const { createCommitOnBranch } = await github.graphql(
+              `mutation ($input: CreateCommitOnBranchInput!) {
+                 createCommitOnBranch(input: $input) { commit { oid } }
+               }`,
+              {
+                input: {
+                  branch: {
+                    repositoryNameWithOwner: process.env.GITHUB_REPOSITORY,
+                    branchName: process.env.HEAD_REF,
+                  },
+                  // Fails the mutation if the branch moved since this run
+                  // started (e.g. a Dependabot force-push) instead of
+                  // committing a bundle built from stale sources.
+                  expectedHeadOid: process.env.HEAD_SHA,
+                  message: { headline: 'build(deps): rebuild dist/' },
+                  fileChanges: { additions },
+                },
+              },
+            );
+            core.info(`Committed ${createCommitOnBranch.commit.oid} to ${process.env.HEAD_REF}`);
+
+      - name: Dispatch required checks on the new head
+        if: ${{ steps.diff.outputs.changed == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          gh workflow run test.yaml --repo "$GITHUB_REPOSITORY" --ref "$HEAD_REF"
+          gh workflow run check-dist.yaml --repo "$GITHUB_REPOSITORY" --ref "$HEAD_REF"
