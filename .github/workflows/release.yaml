@@ -5,20 +5,19 @@
 # so the dist/ committed by contributors on regular PRs (enforced by the
 # required Check dist check) is already the released bundle.
 #
-# When the release PR is merged, release-please creates a DRAFT release at the
-# merge commit (the tag only comes into existence when the release is
-# published); the security gate evaluates the GHAS remediation-SLA policy, the
-# bundle is provenance-attested, an SBOM is attached, the floating v{major} /
-# v{major}.{minor} tags are moved, and the release is published. Everything
-# runs as dependent jobs in a SINGLE workflow run on the default GITHUB_TOKEN —
-# no PAT or GitHub App token.
+# When the release PR is merged, release-please creates a DRAFT release and
+# its git tag at the merge commit; the security gate evaluates the GHAS
+# remediation-SLA policy, the bundle is provenance-attested, an SBOM is
+# attached, the floating v{major} / v{major}.{minor} tags are moved, and the
+# release is published. Everything runs as dependent jobs in a SINGLE workflow
+# run on the default GITHUB_TOKEN — no PAT or GitHub App token.
 #
-# The release and PR phases run as SEPARATE release-please invocations
-# (skip-github-pull-request / skip-github-release): while the release is still
-# a draft its tag does not exist, so a combined invocation would build the next
-# release PR without the release boundary and propose a bogus version bump.
-# The release-pr job therefore runs immediately on regular pushes, but waits
-# for a successful publish on release merges.
+# The tag exists before the gate because force-tag-creation is set in
+# release-please-config.json: GitHub does not create a draft release's tag
+# until it is published, and without the tag release-please cannot find the
+# release boundary and proposes a bogus version bump in the next release PR.
+# Consumers are unaffected by the early tag — the floating v{major} /
+# v{major}.{minor} tags they pin still move only after the gate passes.
 #
 # Known limitation: PRs created with the default GITHUB_TOKEN do not trigger
 # other workflows, so the release PR's required checks will not start on their
@@ -63,7 +62,6 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
           token: ${{ secrets.GITHUB_TOKEN }}
-          skip-github-pull-request: true
 
   security-gate:
     name: Security Gate
@@ -251,29 +249,3 @@ jobs:
               release_id: parseInt(process.env.RELEASE_ID),
               draft: false,
             });
-
-  release-pr:
-    name: Update release PR
-    needs: [release-please, publish-release]
-    # On regular pushes (no release created) publish-release is skipped and
-    # this runs immediately. On a release merge it must wait for the publish:
-    # only then does the tag exist, so release-please computes the next
-    # release PR from the correct boundary (and a failed gate creates no PR
-    # at all — re-running the failed jobs picks this up again).
-    if: >-
-      ${{ always() &&
-          (needs.release-please.outputs.release_created != 'true' ||
-           needs.publish-release.result == 'success') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: write
-      pull-requests: write
-    steps:
-      - name: Run release-please (PR phase)
-        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
-        with:
-          config-file: release-please-config.json
-          manifest-file: .release-please-manifest.json
-          token: ${{ secrets.GITHUB_TOKEN }}
-          skip-github-release: true
