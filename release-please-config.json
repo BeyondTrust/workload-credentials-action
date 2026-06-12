@@ -2,7 +2,8 @@
   "packages": {
     ".": {
       "release-type": "node",
-      "draft": true
+      "draft": true,
+      "force-tag-creation": true
     }
   },
   "include-component-in-tag": false,

@@ -6,5 +6,6 @@ build({
   platform: 'node',
   target: ['node24'],
   outdir: 'dist',
+  minify: true,
   sourcemap: 'external',
 });

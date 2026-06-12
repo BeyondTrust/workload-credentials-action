@@ -1,0 +1,115 @@
+# Dependabot bumps package.json/package-lock.json but never rebuilds dist/, so
+# any update that changes the bundle output (runtime dependencies, or
+# build-chain devDependencies like esbuild) fails the required Check dist. This
+# workflow rebuilds dist/ on Dependabot PRs and commits the result back to the
+# PR branch.
+#
+# The commit is a plain git commit + push: the bundle and its sourcemap are
+# each over the ~1MB GraphQL request limit, so API-based commit mechanisms
+# (createCommitOnBranch, contents API) cannot carry them. The resulting branch
+# commit is unsigned, which is fine because the repository is squash-merge
+# only — GitHub creates and signs the squash commit, so the required_signatures
+# rule on main never sees branch commits. If other merge methods are ever
+# enabled, this workflow must switch to a signed commit mechanism.
+#
+# Commits made with GITHUB_TOKEN do not re-trigger pull_request workflows, so
+# the required checks (Test, Check dist) are dispatched explicitly against the
+# PR branch — their check runs attach to the new head SHA and satisfy the
+# required checks (the same nudge release PRs use).
+name: Dependabot dist
+
+on:
+  pull_request:
+    branches:
+      - main
+    # Only npm updates can change the bundle; github-actions ecosystem bumps
+    # never touch these files.
+    paths:
+      - package.json
+      - package-lock.json
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  rebuild-dist:
+    name: Rebuild dist
+    if: >-
+      ${{ github.actor == 'dependabot[bot]' &&
+          github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # push the rebuilt dist/ to the PR branch
+      actions: write # dispatch the required checks on the new head
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # The push step below supplies the token itself; keeping credentials
+          # out of .git/config means nothing from the freshly-bumped dependency
+          # tree (npm ci, the build) executes with a writable token on disk.
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      # Snapshot the pristine git config before any code from the bumped
+      # dependency tree runs; the commit step restores it so config planted
+      # during the build (hooksPath, fsmonitor, url.insteadOf, proxies)
+      # cannot execute or redirect the authenticated push.
+      - name: Snapshot git config
+        run: cp .git/config "$RUNNER_TEMP/git-config.bak"
+
+      - name: Set Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24.x
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Rebuild the dist/ directory
+        run: npm run build
+
+      - name: Commit rebuilt dist/ to the PR branch
+        id: commit
+        run: |
+          # The build executed code from the just-bumped dependency tree.
+          # Before running git with a token in the environment, discard
+          # git-level state it could have tampered with: restore the config
+          # snapshot, drop any planted hooks, and clear anything it may have
+          # pre-staged into the index.
+          cp "$RUNNER_TEMP/git-config.bak" .git/config
+          rm -rf .git/hooks && mkdir .git/hooks
+          git reset --quiet
+
+          # -A stages modifications, additions, and deletions alike.
+          git add -A dist/
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "dist/ is up to date; nothing to commit."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "build(deps): rebuild dist/"
+            # Fails on non-fast-forward if the branch moved since checkout
+            # (e.g. a Dependabot force-push) instead of clobbering it.
+            git push \
+              "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+              "HEAD:refs/heads/$HEAD_REF"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+
+      - name: Dispatch required checks on the new head
+        if: ${{ steps.commit.outputs.changed == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          gh workflow run test.yaml --repo "$GITHUB_REPOSITORY" --ref "$HEAD_REF"
+          gh workflow run check-dist.yaml --repo "$GITHUB_REPOSITORY" --ref "$HEAD_REF"
