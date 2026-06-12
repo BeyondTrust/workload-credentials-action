@@ -16,8 +16,9 @@
 # release-please-config.json: GitHub does not create a draft release's tag
 # until it is published, and without the tag release-please cannot find the
 # release boundary and proposes a bogus version bump in the next release PR.
-# Consumers are unaffected by the early tag — the floating v{major} /
-# v{major}.{minor} tags they pin still move only after the gate passes.
+# The early semver tag is resolvable in `uses:` from the moment it exists,
+# i.e. before the gate passes; only the floating v{major} / v{major}.{minor}
+# tags — the refs consumers are documented to pin — are gated.
 #
 # Known limitation: PRs created with the default GITHUB_TOKEN do not trigger
 # other workflows, so the release PR's required checks will not start on their
