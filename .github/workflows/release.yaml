@@ -116,13 +116,15 @@ jobs:
   # GitHub's Dependency Graph REST API returns an SPDX SBOM directly. Note:
   # this is a dependency-graph SBOM (the resolved npm dependencies), not a
   # per-artifact bill of materials of the bundled dist/index.js. It is
-  # best-effort and never blocks publish (see the publish-release job's `if`).
+  # best-effort: it does not block publish (see the publish-release job's
+  # `if`) and continue-on-error keeps a failed SBOM from failing the run.
   sbom:
     name: Generate SBOM
     needs: release-please
     if: ${{ needs.release-please.outputs.release_created == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    continue-on-error: true
     permissions:
       contents: write # read the dependency graph and attach the SBOM to the release
     steps:
