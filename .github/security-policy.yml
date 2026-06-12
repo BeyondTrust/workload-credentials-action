@@ -5,15 +5,16 @@
 # open alert has been open longer than the SLA (in days) for its severity (zero
 # tolerance once past SLA). Alerts still within their window do not block.
 #
-# Settings live in `general` so they apply to every enabled check. Only Code Scanning is
-# enabled in the gate — Dependabot, secret-scanning and dependency/licensing are disabled
-# there (they require a GitHub App/PAT to read).
+# The explicit `codescanning` section holds only `remediate`, so alerts are
+# evaluated purely on age. Adding a `level` key (or moving this under `general`,
+# which gets a default level injected from the CLI `--severity` argument) would
+# make the gate block alerts at/above that level immediately, regardless of age.
+#
+# Only Code Scanning is enabled in the gate — Dependabot, secret-scanning and
+# dependency/licensing are disabled there (they require a GitHub App/PAT to read).
 #
 # SLA (max age in days): critical 10 | high 15 | medium 20 | low 90
-general:
-  # `low` scopes the gate to the four security severities below; the remediate windows
-  # decide what blocks, so nothing fails for existing — only for being past SLA.
-  level: low
+codescanning:
   remediate:
     critical: 10
     high: 15
