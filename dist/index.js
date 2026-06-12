@@ -22614,9 +22614,6 @@ function setSecretOutput(name, value, envName) {
   }
 }
 
-// src/version.ts
-var LIB_VERSION = "0.0.0";
-
 // src/main.ts
 var API_BASE_URL = "https://api.beyondtrust.io";
 var UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -22684,7 +22681,7 @@ function resolveOutputName(req, fieldKey) {
 }
 async function run() {
   try {
-    info(`workload-credentials-action v${LIB_VERSION}`);
+    info(`workload-credentials-action @ ${process.env.GITHUB_ACTION_REF ?? "unreleased"}`);
     const apiVersion = getInput("api-version");
     const siteId = getInput("site-id", { required: true });
     const serviceName = getInput("service-name", { required: true });

@@ -1,0 +1,67 @@
+# Dependency security checks. Neither job needs secrets or a writable token,
+# so both are safe to run on fork and Dependabot PRs.
+name: Security
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    - cron: '0 9 * * 1' # Every Monday at 09:00 UTC — catches newly-published CVEs
+  # Lets maintainers report the required Dependency Review check on the
+  # bot-created release PR, which cannot trigger workflows (see release.yaml).
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
+    permissions:
+      contents: read # the action reads the dependency graph; no PR comment step, so no write needed
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          # On workflow_dispatch (release-branch nudge) compare the dispatched
+          # ref against main; on PR events these resolve to the PR's own refs.
+          base-ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.event.pull_request.base.sha }}
+          head-ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.event.pull_request.head.sha }}
+
+  npm-audit:
+    name: npm audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24.x
+
+      # Production dependencies are bundled into dist/index.js and ship to
+      # consumers, so any advisory against them fails the check. Dev-only
+      # dependencies are covered by Dependabot alerts instead.
+      - name: Audit production dependencies
+        run: npm audit --omit=dev

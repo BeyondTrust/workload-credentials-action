@@ -2,7 +2,6 @@
   "packages": {
     ".": {
       "release-type": "node",
-      "extra-files": ["src/version.ts", "dist/index.js"],
       "draft": true
     }
   },

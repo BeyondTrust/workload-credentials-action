@@ -3,26 +3,41 @@
 # `index.js` is the code that will run.
 # For our project, we generate this file through a build process from other source files.
 # We need to make sure the checked-in `index.js` actually matches what we expect it to be.
+#
+# Contributors build dist/ locally (`npm run all`) and commit it with their
+# changes; this check rebuilds the bundle and fails when the committed dist/
+# is stale. It runs on every PR and on every push to main, so anything pending
+# (e.g. a stale bundle merged on a Dependabot PR) surfaces immediately.
+#
+# The release-please release PR is metadata-only (CHANGELOG, version fields,
+# manifest) and never changes the bundle, so the dist/ committed by
+# contributors is already the released bundle. Bot-created PRs cannot trigger
+# this workflow on their own; use workflow_dispatch against the release branch
+# (or close/reopen the PR) to report the required check there.
 name: Check dist/
 
 on:
   pull_request:
     branches:
       - main
-    paths-ignore:
-      - '**.md'
-  workflow_call:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
 
-permissions:
-  contents: none
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   check-dist:
-    # release-please keeps dist/index.js in sync via extra-files in
-    # release-please-config.json, so a rebuild produces no diff on release PRs.
-    permissions:
-      contents: write
+    name: Check dist
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -37,50 +52,15 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Rebuild the dist/ directory
-        run: |
-          npm run build
-
-      - name: Bot check-in dist
-        if: >-
-          ${{ (github.event.sender.login == 'dependabot[bot]' ||
-               github.event.sender.login == 'github-actions[bot]') &&
-              github.event.sender.type == 'Bot' }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SENDER_LOGIN: ${{ github.event.sender.login }}
-          HEAD_REF: ${{ github.head_ref }}
-        run: |
-          git config user.name "${SENDER_LOGIN}"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- 'dist/*.js'
-          if git diff --staged --quiet; then
-            echo "No changes in dist/*.js to commit"
-            exit 0
-          fi
-          git commit -m "chore: rebuild dist/ after bot changes"
-          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/${HEAD_REF}"
-
-      - name: Bot check-out updated branch
-        if: >-
-          ${{ (github.event.sender.login == 'dependabot[bot]' ||
-               github.event.sender.login == 'github-actions[bot]') &&
-              github.event.sender.type == 'Bot' }}
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
+        run: npm run build
 
       - name: Compare the expected and actual dist/ directories
+        id: diff
         run: |
           if [ "$(git diff --ignore-space-at-eol dist/ | wc -l)" -gt "0" ]; then
             echo "Detected uncommitted changes after build.  See status below:"
-            git diff --ignore-space-at-eol
+            git diff --ignore-space-at-eol dist/
+            echo ""
+            echo "Run 'npm run all' locally and commit the dist/ changes."
             exit 1
           fi
-        id: diff
-
-      # If index.js was different than expected, upload the expected version as an artifact
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: ${{ failure() && steps.diff.conclusion == 'failure' }}
-        with:
-          name: dist
-          path: dist/
