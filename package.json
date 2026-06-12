@@ -1,6 +1,6 @@
 {
   "name": "@beyondtrust/workload-credentials-action",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "description": "Securely retrieve secrets from BeyondTrust Workload Credentials in your GitHub Actions workflows via OIDC",
   "scripts": {
