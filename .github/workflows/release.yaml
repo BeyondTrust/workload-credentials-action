@@ -14,11 +14,7 @@
 #
 # Known limitation: PRs created with the default GITHUB_TOKEN do not trigger
 # other workflows, so the release PR's required checks will not start on their
-# own. Before merging, dispatch each required workflow against the release
-# branch (or close/reopen the PR to trigger everything at once):
-#   gh workflow run test.yaml       --ref release-please--branches--main
-#   gh workflow run check-dist.yaml --ref release-please--branches--main
-#   gh workflow run security.yaml   --ref release-please--branches--main
+# own. Look for an "Approve workflows to run" button on the PR itself.
 name: Release
 
 on:
