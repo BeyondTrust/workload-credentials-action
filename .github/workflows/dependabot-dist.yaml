@@ -4,13 +4,16 @@
 # workflow rebuilds dist/ on Dependabot PRs and commits the result back to the
 # PR branch.
 #
-# The commit is a plain git commit + push: the bundle and its sourcemap are
-# each over the ~1MB GraphQL request limit, so API-based commit mechanisms
-# (createCommitOnBranch, contents API) cannot carry them. The resulting branch
-# commit is unsigned, which is fine because the repository is squash-merge
-# only — GitHub creates and signs the squash commit, so the required_signatures
-# rule on main never sees branch commits. If other merge methods are ever
-# enabled, this workflow must switch to a signed commit mechanism.
+# main's ruleset requires signed commits, and that rule blocks merging a PR
+# that contains any unsigned commit (squash-merge does not exempt it). So the
+# rebuild commit is created through the GraphQL createCommitOnBranch mutation,
+# which GitHub signs with its web-flow key (the commit shows as "Verified") with
+# no signing key to manage. That API carries file contents base64-encoded in
+# the request, capped at ~1MB; dist/ is a single ~638KB (base64) index.js, well
+# under the limit, because build.ts emits no external sourcemap. If the bundle
+# ever grows past the limit (e.g. a sourcemap is reintroduced), this workflow
+# can no longer carry it through the signing API and must switch to another
+# signed-commit mechanism.
 #
 # Commits made with GITHUB_TOKEN do not re-trigger pull_request workflows, so
 # the required checks (Test, Check dist) are dispatched explicitly against the
@@ -43,24 +46,24 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      contents: write # push the rebuilt dist/ to the PR branch
+      contents: write # commit the rebuilt dist/ to the PR branch
       actions: write # dispatch the required checks on the new head
     steps:
       - name: Checkout PR branch
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          # The push step below supplies the token itself; keeping credentials
-          # out of .git/config means nothing from the freshly-bumped dependency
-          # tree (npm ci, the build) executes with a writable token on disk.
+          # No git remote is used: the build runs with no token on disk, and the
+          # rebuilt dist/ is committed through the GraphQL API (GH_TOKEN in env)
+          # below. Keeping credentials out of .git/config means nothing from the
+          # freshly-bumped dependency tree (npm ci, the build) sees a token.
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.ref }}
 
-      # Snapshot the pristine git config before any code from the bumped
-      # dependency tree runs; the commit step restores it so config planted
-      # during the build (hooksPath, fsmonitor, url.insteadOf, proxies)
-      # cannot execute or redirect the authenticated push.
-      - name: Snapshot git config
-        run: cp .git/config "$RUNNER_TEMP/git-config.bak"
+      # Snapshot the committed bundle before any code from the bumped dependency
+      # tree runs, so the commit step can detect a rebuild with a plain cmp and
+      # never has to invoke git on a tree the build may have tampered with.
+      - name: Snapshot current dist/index.js
+        run: cp dist/index.js "$RUNNER_TEMP/index.js.pre"
 
       - name: Set Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
@@ -76,34 +79,61 @@ jobs:
       - name: Commit rebuilt dist/ to the PR branch
         id: commit
         run: |
-          # The build executed code from the just-bumped dependency tree.
-          # Before running git with a token in the environment, discard
-          # git-level state it could have tampered with: restore the config
-          # snapshot, drop any planted hooks, and clear anything it may have
-          # pre-staged into the index.
-          cp "$RUNNER_TEMP/git-config.bak" .git/config
-          rm -rf .git/hooks && mkdir .git/hooks
-          git reset --quiet
-
-          # -A stages modifications, additions, and deletions alike.
-          git add -A dist/
-          if git diff --cached --quiet; then
+          # dist/ is a single index.js by design (no sourcemap), so a plain cmp
+          # against the pre-build snapshot tells us whether the bundle changed —
+          # no git invocation on the post-build tree.
+          if cmp -s dist/index.js "$RUNNER_TEMP/index.js.pre"; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "dist/ is up to date; nothing to commit."
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "build(deps): rebuild dist/"
-            # Fails on non-fast-forward if the branch moved since checkout
-            # (e.g. a Dependabot force-push) instead of clobbering it.
-            git push \
-              "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
-              "HEAD:refs/heads/$HEAD_REF"
-            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+
+          # base64 to a file (no trailing newline with -w0) and feed it to jq via
+          # --rawfile: the ~638KB string is too large to pass as a command-line
+          # argument (ARG_MAX). || exit aborts rather than committing empty.
+          base64 -w0 dist/index.js > "$RUNNER_TEMP/index.js.b64" || exit 1
+
+          # expectedHeadOid pins the commit to the head the event fired on, so
+          # the mutation fails (instead of clobbering) if the branch moved since
+          # checkout (e.g. a Dependabot force-push) — a non-fast-forward guard
+          # enforced server-side.
+          body=$(
+            jq -n \
+              --arg repo "$GITHUB_REPOSITORY" \
+              --arg branch "$HEAD_REF" \
+              --arg oid "$HEAD_SHA" \
+              --rawfile contents "$RUNNER_TEMP/index.js.b64" \
+              '{
+                query: "mutation ($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
+                variables: {
+                  input: {
+                    branch: { repositoryNameWithOwner: $repo, branchName: $branch },
+                    message: { headline: "build(deps): rebuild dist/" },
+                    expectedHeadOid: $oid,
+                    fileChanges: { additions: [ { path: "dist/index.js", contents: $contents } ] }
+                  }
+                }
+              }'
+          )
+
+          # A transport/auth failure exits non-zero with an empty body; a GraphQL
+          # error (e.g. an oid mismatch) comes back in a 200 body. Catch both so a
+          # failed commit is never reported as a successful rebuild.
+          if ! response=$(printf '%s' "$body" | gh api graphql --input -); then
+            echo "createCommitOnBranch request failed:" >&2
+            printf '%s\n' "$response" >&2
+            exit 1
+          fi
+          if printf '%s' "$response" | jq -e '.errors' >/dev/null; then
+            echo "createCommitOnBranch returned errors:" >&2
+            printf '%s' "$response" | jq '.errors' >&2
+            exit 1
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
 
       - name: Dispatch required checks on the new head
         if: ${{ steps.commit.outputs.changed == 'true' }}
