@@ -32,17 +32,17 @@
     "@eslint/js": "^10.0.1",
     "@types/jest": "^30.0.0",
     "@types/js-yaml": "^4.0.9",
-    "@types/node": "^25.9.1",
-    "@typescript-eslint/parser": "^8.59.4",
-    "eslint": "^10.4.0",
+    "@types/node": "^25.9.2",
+    "@typescript-eslint/parser": "^8.60.1",
+    "eslint": "^10.4.1",
     "fast-check": "^4.8.0",
     "globals": "^17.6.0",
     "jest": "^30.4.2",
     "prettier": "^3.8.1",
     "ts-jest": "^29.4.11",
-    "tsx": "^4.22.3",
+    "tsx": "^4.22.4",
     "typescript": "^6.0.2",
-    "typescript-eslint": "^8.59.4"
+    "typescript-eslint": "^8.60.1"
   },
   "overrides": {
     "brace-expansion": "5.0.6"
