@@ -45,6 +45,10 @@
     "typescript-eslint": "^8.59.4"
   },
   "overrides": {
-    "brace-expansion": "5.0.6"
+    "brace-expansion": "5.0.6",
+    "@babel/core": "7.29.7",
+    "@istanbuljs/load-nyc-config": {
+      "js-yaml": "3.15.0"
+    }
   }
 }
