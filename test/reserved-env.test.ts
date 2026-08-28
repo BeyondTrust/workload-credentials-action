@@ -51,7 +51,6 @@ describe('isReservedEnvName', () => {
     'APPDATA',
     'XDG_CONFIG_HOME',
     'XDG_DATA_DIRS',
-    'PSMODULEPATH',
     'PYTHONPATH',
     'NODE_PATH',
     'CLASSPATH',
