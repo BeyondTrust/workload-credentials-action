@@ -1,6 +1,7 @@
-import { getInput, setFailed, getIDToken, info } from '@actions/core';
+import { getInput, setFailed, getIDToken, info, warning } from '@actions/core';
 import { load, JSON_SCHEMA } from 'js-yaml';
 import { createClient, fetchSecret } from './client';
+import { isReservedEnvName } from './reserved-env';
 import { setSecretOutput } from './secret';
 
 const API_BASE_URL = 'https://api.beyondtrust.io';
@@ -171,6 +172,21 @@ export async function run(): Promise<void> {
       for (const req of requests) {
         const keys = req.key ? [req.key] : Object.keys(cache.get(req.path)!);
 
+        // Without "key", env var names come from the secret payload rather than from this
+        // workflow. A prefix confines them to a namespace the author chose, so no field name
+        // can reach a variable a later tool reads. This is what bounds the blast radius
+        // without having to predict which names are dangerous; the reserved-name check below
+        // only backstops prefixes too short or too generic to confine anything.
+        if (req.exportToEnv && !req.key && !req.prefix) {
+          throw new Error(
+            `Secret entry for "${req.path}": "export-to-env" without "key" requires an "output-name" prefix, ` +
+              `e.g. output-name: "APP_*". Field names come from the secret rather than from this workflow, ` +
+              `so they are namespaced instead of becoming environment variable names directly. ` +
+              `To control the exact name, request the field explicitly: ` +
+              `{ path: "${req.path}", key: "FIELD", output-name: "YOUR_NAME", export-to-env: true }.`,
+          );
+        }
+
         for (const k of keys) {
           const name = resolveOutputName(req, k);
           if (!OUTPUT_NAME_REGEX.test(name)) {
@@ -186,6 +202,25 @@ export async function run(): Promise<void> {
 
           if (req.exportToEnv) {
             const envName = name.toUpperCase();
+
+            // The workflow author names the variable when "key" is set; otherwise the name is
+            // whatever the secret's field is called, so it must not land on a variable that
+            // decides how later steps load code or resolve tools.
+            if (isReservedEnvName(envName)) {
+              if (!req.key) {
+                throw new Error(
+                  `Secret at "${req.path}" contains field "${k}", which would set the reserved environment ` +
+                    `variable "${envName}". Reserved variables control how later steps run and cannot be set ` +
+                    `from a secret's field names. Export it explicitly under a different name: ` +
+                    `{ path: "${req.path}", key: "${k}", output-name: "YOUR_NAME", export-to-env: true }.`,
+                );
+              }
+              warning(
+                `"${envName}" is a reserved environment variable that affects how later steps run. ` +
+                  `It is set here because the workflow asked for it by name; make sure that is intended.`,
+              );
+            }
+
             if (envNames.has(envName)) {
               throw new Error(
                 `Duplicate environment variable name "${envName}". Each env var must be unique when "export-to-env" is true.`,
