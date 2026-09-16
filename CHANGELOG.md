@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.2](https://github.com/BeyondTrust/workload-credentials-action/compare/v1.0.1...v1.0.2) (2026-09-16)
+
+
+### Bug Fixes
+
+* **deps:** bump js-yaml past GHSA-2883-xcg3-v3hh ([#101](https://github.com/BeyondTrust/workload-credentials-action/issues/101)) ([8fb386e](https://github.com/BeyondTrust/workload-credentials-action/commit/8fb386ecb6677f5e7745c8601d87012d7c136d85))
+* **deps:** bump js-yaml past GHSA-5p4m-2wfm-xmqj ([#85](https://github.com/BeyondTrust/workload-credentials-action/issues/85)) ([2dea286](https://github.com/BeyondTrust/workload-credentials-action/commit/2dea2860fa1df7b4165298c04f547475a431db2f))
+
 ## 1.0.1 (2026-06-12)
 
 🎉 Initial public release, created manually outside release-please — see the [v1.0.1 release notes](https://github.com/BeyondTrust/workload-credentials-action/releases/tag/v1.0.1).
