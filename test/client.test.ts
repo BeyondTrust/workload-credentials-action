@@ -130,6 +130,15 @@ describe('fetchSecret', () => {
     expect(url).toContain(`/site/${SITE_ID}/`);
   });
 
+  test('addresses the Workload Credentials API path', async () => {
+    mockHttpResponse(200, JSON.stringify({ secret: { k: 'v' } }));
+
+    await fetchSecret(client, API_BASE_URL, SITE_ID, 'secret');
+
+    const url = MockedHttpClient.prototype.get.mock.calls[0][0];
+    expect(url).toBe(`${API_BASE_URL}/site/${SITE_ID}/wlc/static/secret`);
+  });
+
   test('throws on non-success status code', async () => {
     mockHttpResponse(401, 'Unauthorized');
 
