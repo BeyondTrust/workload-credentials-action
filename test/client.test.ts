@@ -95,7 +95,7 @@ describe('fetchSecret', () => {
       expect.objectContaining({
         Authorization: 'Bearer oidc-token',
         Accept: 'application/json',
-        'bt-secrets-api-version': API_VERSION,
+        'bt-wlc-api-version': API_VERSION,
         'X-BT-Service-Name': SERVICE_NAME,
       }),
     );
