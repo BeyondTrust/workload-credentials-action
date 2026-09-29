@@ -25,14 +25,14 @@
   "dependencies": {
     "@actions/core": "^3.0.1",
     "@actions/http-client": "^4.0.1",
-    "js-yaml": "^5.4.1"
+    "js-yaml": "^5.4.2"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.7",
     "@eslint/js": "^10.0.1",
     "@types/jest": "^30.0.0",
     "@types/js-yaml": "^4.0.9",
-    "@types/node": "^25.9.1",
+    "@types/node": "^26.6.0",
     "@typescript-eslint/parser": "^8.69.0",
     "eslint": "^10.9.1",
     "fast-check": "^4.9.0",
