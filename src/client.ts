@@ -1,6 +1,6 @@
 import { HttpClient } from '@actions/http-client';
 
-const API_PATH = '/secrets';
+const API_PATH = '/wlc';
 const REQUEST_TIMEOUT_MS = 30_000;
 
 interface SecretsResponse {
@@ -35,7 +35,7 @@ export function createClient(oidcToken: string, apiVersion: string, serviceName:
     headers: {
       Authorization: `Bearer ${oidcToken}`,
       Accept: 'application/json',
-      'bt-secrets-api-version': apiVersion,
+      'bt-wlc-api-version': apiVersion,
       'X-BT-Service-Name': serviceName,
     },
   };
