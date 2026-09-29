@@ -20,6 +20,14 @@
 # i.e. before the gate passes; only the floating v{major} / v{major}.{minor}
 # tags — the refs consumers are documented to pin — are gated.
 #
+# Recovering a stalled release: release-please creates a release only once, so
+# re-running this workflow after a failed gate reports no release and skips
+# everything downstream. Instead, run it manually (workflow_dispatch) on main
+# with the stalled release's tag. That resolves the existing DRAFT release and
+# runs the gate, attestation, SBOM, tag move and publish for it. Only draft
+# releases whose commit is on main are accepted, so a published version can
+# never be re-published or have the floating tags moved back onto it.
+#
 # Known limitation: PRs created with the default GITHUB_TOKEN do not trigger
 # other workflows, so the release PR's required checks will not start on their
 # own. Look for an "Approve workflows to run" button on the PR itself.
@@ -29,6 +37,12 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag of the stalled draft release to finish, e.g. v1.2.3'
+        required: true
+        type: string
 
 permissions: {}
 
@@ -48,21 +62,71 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+    # Each output comes from release-please on push, or from the existing draft
+    # release on workflow_dispatch; only one of the two steps runs.
     outputs:
-      release_created: ${{ steps.release.outputs.release_created || false }}
-      release_id: ${{ steps.release.outputs.id }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
-      sha: ${{ steps.release.outputs.sha }}
-      major: ${{ steps.release.outputs.major }}
-      minor: ${{ steps.release.outputs.minor }}
+      release_created: ${{ steps.release.outputs.release_created || steps.existing.outputs.release_created || false }}
+      release_id: ${{ steps.release.outputs.id || steps.existing.outputs.id }}
+      tag_name: ${{ steps.release.outputs.tag_name || steps.existing.outputs.tag_name }}
+      sha: ${{ steps.release.outputs.sha || steps.existing.outputs.sha }}
+      major: ${{ steps.release.outputs.major || steps.existing.outputs.major }}
+      minor: ${{ steps.release.outputs.minor || steps.existing.outputs.minor }}
     steps:
       - name: Run release-please
         id: release
+        if: ${{ github.event_name == 'push' }}
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve the stalled draft release
+        id: existing
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+          REF: ${{ github.ref }}
+        run: |
+          if [[ "$REF" != refs/heads/main ]]; then
+            echo "::error::Run this workflow on main, not $REF."
+            exit 1
+          fi
+          if [[ ! "$TAG" =~ ^v([0-9]+)\.([0-9]+)\.[0-9]+$ ]]; then
+            echo "::error::tag must look like v1.2.3, got: $TAG"
+            exit 1
+          fi
+          major="${BASH_REMATCH[1]}"
+          minor="${BASH_REMATCH[2]}"
+
+          # Drafts are only visible through the list endpoint, not get-by-tag.
+          release=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases" \
+            --jq '.[] | select(.tag_name == env.TAG) | {id, draft}')
+          if [[ -z "$release" ]]; then
+            echo "::error::No release found for $TAG."
+            exit 1
+          fi
+          if [[ "$(jq -r .draft <<<"$release")" != true ]]; then
+            echo "::error::$TAG is already published; only a draft release can be finished."
+            exit 1
+          fi
+
+          sha=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${TAG}" --jq .sha)
+          status=$(gh api "repos/${GITHUB_REPOSITORY}/compare/${sha}...main" --jq .status)
+          if [[ "$status" != ahead && "$status" != identical ]]; then
+            echo "::error::$TAG ($sha) is not on main (compare status: $status)."
+            exit 1
+          fi
+
+          {
+            echo "release_created=true"
+            echo "id=$(jq -r .id <<<"$release")"
+            echo "tag_name=$TAG"
+            echo "sha=$sha"
+            echo "major=$major"
+            echo "minor=$minor"
+          } >> "$GITHUB_OUTPUT"
 
   security-gate:
     name: Security Gate
