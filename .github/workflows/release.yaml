@@ -24,9 +24,10 @@
 # re-running this workflow after a failed gate reports no release and skips
 # everything downstream. Instead, run it manually (workflow_dispatch) on main
 # with the stalled release's tag. That resolves the existing DRAFT release and
-# runs the gate, attestation, SBOM, tag move and publish for it. Only draft
-# releases whose commit is on main are accepted, so a published version can
-# never be re-published or have the floating tags moved back onto it.
+# runs the gate, attestation, SBOM, tag move and publish for it. Only a draft
+# release whose commit is on main, and at or after where its floating tags
+# already point, is accepted: a published version is never published again,
+# and a stale draft cannot pull v{major} / v{major}.{minor} backwards.
 #
 # Known limitation: PRs created with the default GITHUB_TOKEN do not trigger
 # other workflows, so the release PR's required checks will not start on their
@@ -119,6 +120,22 @@ jobs:
             exit 1
           fi
 
+          # A newer release may have shipped while this draft sat unfinished. The floating
+          # tags must then stay where they are, so refuse any move that is not forward.
+          # matching-refs answers 200 with an empty list for a missing tag, so a failed
+          # lookup stops the run instead of reading as "no tag yet".
+          for floating in "v${major}" "v${major}.${minor}"; do
+            exists=$(gh api "repos/${GITHUB_REPOSITORY}/git/matching-refs/tags/${floating}" \
+              --jq "map(select(.ref == \"refs/tags/${floating}\")) | length")
+            [[ "$exists" == 0 ]] && continue
+            current=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${floating}" --jq .sha)
+            status=$(gh api "repos/${GITHUB_REPOSITORY}/compare/${current}...${sha}" --jq .status)
+            if [[ "$status" != ahead && "$status" != identical ]]; then
+              echo "::error::$floating is at $current, which $TAG ($sha) does not come after (compare status: $status). Finishing $TAG would move $floating backwards."
+              exit 1
+            fi
+          done
+
           {
             echo "release_created=true"
             echo "id=$(jq -r .id <<<"$release")"
@@ -177,11 +194,30 @@ jobs:
         with:
           script: |
             const fs = require('fs');
+            const name = 'attestation.sigstore.json';
+            const release_id = parseInt(process.env.RELEASE_ID);
+
+            // A recovery run repeats this upload for a draft that may already carry the
+            // bundle from an earlier attempt, and the API rejects a duplicate asset name.
+            const assets = await github.paginate(github.rest.repos.listReleaseAssets, {
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              release_id,
+            });
+            for (const asset of assets.filter((a) => a.name === name)) {
+              await github.rest.repos.deleteReleaseAsset({
+                owner: context.repo.owner,
+                repo:  context.repo.repo,
+                asset_id: asset.id,
+              });
+              core.info(`Replaced existing ${name} (asset ${asset.id})`);
+            }
+
             await github.rest.repos.uploadReleaseAsset({
               owner: context.repo.owner,
               repo:  context.repo.repo,
-              release_id: parseInt(process.env.RELEASE_ID),
-              name: 'attestation.sigstore.json',
+              release_id,
+              name,
               data: fs.readFileSync(process.env.BUNDLE_PATH),
             });
 
