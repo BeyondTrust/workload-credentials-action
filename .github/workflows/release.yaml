@@ -23,6 +23,16 @@
 # Known limitation: PRs created with the default GITHUB_TOKEN do not trigger
 # other workflows, so the release PR's required checks will not start on their
 # own. Look for an "Approve workflows to run" button on the PR itself.
+#
+# Recovering a stalled release (e.g. the security gate failed): re-running the
+# whole run does not work, because release-please runs again, finds the
+# release already created, and everything downstream is skipped. Instead, fix
+# the cause and have release-please create the release again:
+#   1. Delete the draft release, keeping its tag (gh release delete <tag>).
+#   2. On the merged release PR, replace the "autorelease: tagged" label with
+#      "autorelease: pending".
+#   3. Merge any change to main. release-please recreates the draft at the
+#      release PR's merge commit and the jobs below run in full.
 name: Release
 
 on:
