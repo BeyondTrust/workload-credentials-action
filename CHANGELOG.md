@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.3](https://github.com/BeyondTrust/workload-credentials-action/compare/v1.0.2...v1.0.3) (2026-10-08)
+
+
+### Bug Fixes
+
+* **deps:** bump brace-expansion override to 5.0.12 ([#113](https://github.com/BeyondTrust/workload-credentials-action/issues/113)) ([163fce8](https://github.com/BeyondTrust/workload-credentials-action/commit/163fce87067625b5c9c16b2c302100669bf95664))
+* **deps:** drop sprintf-js by overriding js-yaml 3's argparse to 2.x ([#115](https://github.com/BeyondTrust/workload-credentials-action/issues/115)) ([451f19d](https://github.com/BeyondTrust/workload-credentials-action/commit/451f19d47a9eed4e70d81a7e1cf8bc57d85ff84d))
+
 ## [1.0.2](https://github.com/BeyondTrust/workload-credentials-action/compare/v1.0.1...v1.0.2) (2026-09-29)
 
 
