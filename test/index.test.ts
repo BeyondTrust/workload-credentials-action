@@ -380,6 +380,149 @@ describe('run', () => {
     expect(mockedSecret.setSecretOutput).not.toHaveBeenCalled();
   });
 
+  // A prefix is required whenever env var names would come from the secret payload (CWE-15).
+  test.each([
+    ['no output-name', 'path: "prod/app"\n  export-to-env: true'],
+    ['a bare asterisk', 'path: "prod/app"\n  output-name: "*"\n  export-to-env: true'],
+  ])('rejects export-all to env with %s', async (_label, entry) => {
+    setupInputs({
+      'site-id': SITE_ID,
+      'static-secrets': yamlSecrets(entry),
+    });
+    mockedCore.getIDToken.mockResolvedValue('token');
+    mockedClient.fetchSecret.mockResolvedValue({ apiKey: 'sk-123', GIT_SSH_COMMAND: 'attacker-value' });
+
+    await run();
+
+    expect(mockedCore.setFailed).toHaveBeenCalledWith(
+      expect.stringContaining('"export-to-env" without "key" requires an "output-name" prefix'),
+    );
+    expect(mockedSecret.setSecretOutput).not.toHaveBeenCalled();
+  });
+
+  // The prefix is the control: a dangerous field name cannot resolve to a dangerous variable.
+  test.each(['GIT_SSH_COMMAND', 'LD_PRELOAD', 'BASH_ENV', 'NPM_CONFIG_REGISTRY', 'PATH', 'GITHUB_ENV'])(
+    'namespaces a field named %s instead of setting it',
+    async (field) => {
+      setupInputs({
+        'site-id': SITE_ID,
+        'static-secrets': yamlSecrets('path: "prod/app"\n  output-name: "app_*"\n  export-to-env: true'),
+      });
+      mockedCore.getIDToken.mockResolvedValue('token');
+      mockedClient.fetchSecret.mockResolvedValue({ [field]: 'attacker-value' });
+
+      await run();
+
+      expect(mockedSecret.setSecretOutput).toHaveBeenCalledWith(`app_${field}`, 'attacker-value', `APP_${field}`);
+      expect(mockedCore.setFailed).not.toHaveBeenCalled();
+    },
+  );
+
+  test('still exports all fields to env when a prefix is given', async () => {
+    setupInputs({
+      'site-id': SITE_ID,
+      'static-secrets': yamlSecrets('path: "prod/app"\n  output-name: "app_*"\n  export-to-env: true'),
+    });
+    mockedCore.getIDToken.mockResolvedValue('token');
+    mockedClient.fetchSecret.mockResolvedValue({ apiKey: 'sk-123', dbHost: 'localhost' });
+
+    await run();
+
+    expect(mockedSecret.setSecretOutput).toHaveBeenCalledWith('app_apiKey', 'sk-123', 'APP_APIKEY');
+    expect(mockedSecret.setSecretOutput).toHaveBeenCalledWith('app_dbHost', 'localhost', 'APP_DBHOST');
+  });
+
+  test('allows export-all without a prefix when not exporting to env', async () => {
+    setupInputs({
+      'site-id': SITE_ID,
+      'static-secrets': yamlSecrets('path: "prod/app"'),
+    });
+    mockedCore.getIDToken.mockResolvedValue('token');
+    mockedClient.fetchSecret.mockResolvedValue({ GIT_SSH_COMMAND: 'value' });
+
+    await run();
+
+    expect(mockedSecret.setSecretOutput).toHaveBeenCalledWith('GIT_SSH_COMMAND', 'value', undefined);
+    expect(mockedCore.setFailed).not.toHaveBeenCalled();
+  });
+
+  test('allows a reserved field name when export-to-env is off', async () => {
+    setupInputs({
+      'site-id': SITE_ID,
+      'static-secrets': yamlSecrets('path: "prod/app"'),
+    });
+    mockedCore.getIDToken.mockResolvedValue('token');
+    mockedClient.fetchSecret.mockResolvedValue({ GIT_SSH_COMMAND: 'value' });
+
+    await run();
+
+    expect(mockedSecret.setSecretOutput).toHaveBeenCalledWith('GIT_SSH_COMMAND', 'value', undefined);
+    expect(mockedCore.setFailed).not.toHaveBeenCalled();
+  });
+
+  test('prefix mode keeps a reserved field key out of the reserved namespace', async () => {
+    setupInputs({
+      'site-id': SITE_ID,
+      'static-secrets': yamlSecrets('path: "prod/app"\n  output-name: "app_*"\n  export-to-env: true'),
+    });
+    mockedCore.getIDToken.mockResolvedValue('token');
+    mockedClient.fetchSecret.mockResolvedValue({ LD_PRELOAD: 'value' });
+
+    await run();
+
+    expect(mockedSecret.setSecretOutput).toHaveBeenCalledWith('app_LD_PRELOAD', 'value', 'APP_LD_PRELOAD');
+    expect(mockedCore.setFailed).not.toHaveBeenCalled();
+  });
+
+  test('rejects a prefix that lands the resolved name in a reserved namespace', async () => {
+    setupInputs({
+      'site-id': SITE_ID,
+      'static-secrets': yamlSecrets('path: "prod/app"\n  output-name: "git_*"\n  export-to-env: true'),
+    });
+    mockedCore.getIDToken.mockResolvedValue('token');
+    mockedClient.fetchSecret.mockResolvedValue({ ssh_command: 'value' });
+
+    await run();
+
+    expect(mockedCore.setFailed).toHaveBeenCalledWith(
+      expect.stringContaining('reserved environment variable "GIT_SSH_COMMAND"'),
+    );
+    expect(mockedSecret.setSecretOutput).not.toHaveBeenCalled();
+  });
+
+  test('allows an author-declared reserved name but warns', async () => {
+    setupInputs({
+      'site-id': SITE_ID,
+      'static-secrets': yamlSecrets(
+        'path: "prod/app"\n  key: "sshCommand"\n  output-name: "GIT_SSH_COMMAND"\n  export-to-env: true',
+      ),
+    });
+    mockedCore.getIDToken.mockResolvedValue('token');
+    mockedClient.fetchSecret.mockResolvedValue({ sshCommand: 'ssh -i /key' });
+
+    await run();
+
+    expect(mockedSecret.setSecretOutput).toHaveBeenCalledWith('GIT_SSH_COMMAND', 'ssh -i /key', 'GIT_SSH_COMMAND');
+    expect(mockedCore.warning).toHaveBeenCalledWith(expect.stringContaining('"GIT_SSH_COMMAND" is a reserved'));
+    expect(mockedCore.setFailed).not.toHaveBeenCalled();
+  });
+
+  test('a short prefix that fails to namespace is caught by the reserved list', async () => {
+    setupInputs({
+      'site-id': SITE_ID,
+      'static-secrets': yamlSecrets('path: "prod/app"\n  output-name: "a*"\n  export-to-env: true'),
+    });
+    mockedCore.getIDToken.mockResolvedValue('token');
+    mockedClient.fetchSecret.mockResolvedValue({ ws_config_file: 'attacker-value' });
+
+    await run();
+
+    expect(mockedCore.setFailed).toHaveBeenCalledWith(
+      expect.stringContaining('reserved environment variable "AWS_CONFIG_FILE"'),
+    );
+    expect(mockedSecret.setSecretOutput).not.toHaveBeenCalled();
+  });
+
   // Caching
   test('fetches same path only once', async () => {
     setupInputs({

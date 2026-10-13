@@ -45,7 +45,7 @@ The `static-secrets` input accepts a YAML list. Each entry supports:
 | `path` | Yes | The secret path in BeyondTrust (e.g. `prod/app`). |
 | `key` | No | A specific field to extract. Omit to export all fields. |
 | `output-name` | No | Alias for the output name, or a prefix if ending with `*`. See [Naming rules](#naming-rules). |
-| `export-to-env` | No | Export as an uppercase environment variable. Defaults to `false`. |
+| `export-to-env` | No | Export as an uppercase environment variable. Defaults to `false`. Requires an `output-name` prefix when `key` is omitted — see [Environment variable naming](#environment-variable-naming). |
 
 ## Outputs
 
@@ -54,7 +54,7 @@ Each secret is available as a **step output**. The name is determined by:
 - `output-name` ending with `*` (prefix) + the field key
 - The original field key if no `output-name` is set
 
-When `export-to-env: true`, the value is also exported as an **uppercase environment variable** available in all subsequent steps.
+When `export-to-env: true`, the value is also exported as an **uppercase environment variable** available in all subsequent steps. Naming is constrained in that mode; see [Environment variable naming](#environment-variable-naming).
 
 All values are masked in workflow logs.
 
@@ -80,6 +80,61 @@ static-secrets: |
 ```
 
 Prefix mode does not rename the field key, so it cannot rescue an unsupported key. For example, `key: "api-key"` with `output-name: "my_app_*"` resolves to `my_app_api-key`, which is rejected because of the `-`.
+
+## Environment variable naming
+
+With `export-to-env: true`, the environment variable name has to come from your workflow, not from the secret. Otherwise whoever can name a field on the secret chooses a variable name on your runner — and names like `GIT_SSH_COMMAND`, `LD_PRELOAD`, or `NPM_CONFIG_REGISTRY` change how later steps execute code.
+
+Two rules follow from that.
+
+### A prefix is required when `key` is omitted
+
+Without `key`, every field in the secret becomes an environment variable, so `output-name` must supply a namespace:
+
+```yaml
+static-secrets: |
+  - path: "prod/app"
+    output-name: "APP_*"     # required
+    export-to-env: true
+```
+
+A field named `GIT_SSH_COMMAND` then resolves to `APP_GIT_SSH_COMMAND`, which no tool reads. To control exact names, request the fields explicitly instead:
+
+```yaml
+static-secrets: |
+  - path: "prod/app"
+    key: "accessKeyId"
+    output-name: "AWS_ACCESS_KEY_ID"
+    export-to-env: true
+```
+
+This applies only to `export-to-env`. Exporting every field as a **step output** needs no prefix, because a later step must reference an output by name for it to have any effect.
+
+### Reserved names are rejected
+
+As a backstop — a prefix like `git_*` doesn't namespace anything — resolved names are checked against a reserved list:
+
+- Runner-controlled namespaces: `GITHUB_*`, `RUNNER_*`, `ACTIONS_*`, `INPUT_*`
+- Loaders and lookup paths: `LD_*`, `DYLD_*`, `PATH`, `CLASSPATH`, `HOME`
+- Command hooks: `GIT_*`, `SSH_*`, `BASH_ENV`, `ENV`, `SHELLOPTS`, `PS4`, `EDITOR`, `PAGER`
+- Runtimes and package managers: `NODE_*`, `PYTHON*`, `PERL*`, `RUBY*`, `JAVA_*`, `NPM_CONFIG_*`, `PIP_*`, `YARN_*`, `GEM_*`, `BUNDLE_*`, `NUGET_*`, `DOTNET_*`
+- Windows: `COMSPEC`, `PATHEXT`, `PSMODULEPATH`, `MSBUILD*`, `PROGRAMFILES`, `CHOCOLATEY*`, `__COMPAT_LAYER`
+- Network and transport: `HTTP_PROXY`, `HTTPS_PROXY`, `SSL_CERT_FILE`, `NETRC`, `OPENSSL_*`
+- Endpoint redirection: `DOCKER_HOST`, `DOCKER_CONFIG`, `KUBECONFIG`, `AWS_CONFIG_FILE`, `AWS_CONTAINER_*`, `GCE_METADATA*`
+
+The full list is in [src/reserved-env.ts](src/reserved-env.ts). Hitting one fails the step before anything is exported, so a secret change can never partially apply.
+
+Credential-shaped names are deliberately **not** reserved, including `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AZURE_CLIENT_SECRET`, `ARM_CLIENT_SECRET`, `TF_VAR_*`, `DOCKER_PASSWORD`, `CARGO_REGISTRY_TOKEN`, and `NPM_TOKEN`. Only the redirection members of those namespaces are refused.
+
+If you deliberately want a reserved variable, name it yourself with `key` + `output-name`. The action sets it and logs a warning, because the name is then declared in your workflow rather than in the secret — the same authority you have writing an `env:` block by hand:
+
+```yaml
+static-secrets: |
+  - path: "prod/app"
+    key: "sshCommand"
+    output-name: "GIT_SSH_COMMAND"
+    export-to-env: true
+```
 
 ## Secret masking
 
