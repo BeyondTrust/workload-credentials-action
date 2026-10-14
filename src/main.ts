@@ -69,6 +69,15 @@ export function parseSecretInput(input: string): SecretRequest[] {
       throw new Error(`Secret entry ${index + 1}: "output-name" must end with "*" when "key" is not specified.`);
     }
 
+    // Export-all to env without a prefix would let field names in the secret pick arbitrary
+    // env var names (e.g. GIT_SSH_COMMAND, LD_PRELOAD, BASH_ENV) for every later step.
+    if (!key && exportToEnv && !prefix) {
+      throw new Error(
+        `Secret entry ${index + 1}: "export-to-env" requires a non-empty "output-name" prefix (e.g. "APP_*") when "key" is not specified. ` +
+          `Alternatively, list each field with "key" (and "output-name" to keep a specific env var name).`,
+      );
+    }
+
     const outputNameBody = isPrefix ? prefix : alias;
     if (outputNameBody.length > 0 && !OUTPUT_NAME_REGEX.test(outputNameBody)) {
       throw new Error(

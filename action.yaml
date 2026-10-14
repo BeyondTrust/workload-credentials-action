@@ -13,7 +13,7 @@ inputs:
     description: 'The service name specified when creating an OIDC issuer registration in BeyondTrust Pathfinder Platform.'
     required: true
   static-secrets:
-    description: 'YAML list of secrets to retrieve. Each entry: path (required), key (optional, omit to export all fields), output-name (optional alias, or prefix if ending with *), export-to-env (optional, default false).'
+    description: 'YAML list of secrets to retrieve. Each entry: path (required), key (optional, omit to export all fields), output-name (optional alias, or prefix if ending with *), export-to-env (optional, default false; requires a non-empty prefix when key is omitted).'
     required: true
 runs:
   using: 'node24'
