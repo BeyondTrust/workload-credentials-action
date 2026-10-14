@@ -56,6 +56,8 @@ Each secret is available as a **step output**. The name is determined by:
 
 When `export-to-env: true`, the value is also exported as an **uppercase environment variable** available in all subsequent steps.
 
+When `key` is omitted, `export-to-env: true` requires a non-empty prefix (`output-name` ending with `*`, e.g. `APP_*`). Without one, field names in the secret would choose env var names directly, so anyone who can edit the secret could set variables such as `GIT_SSH_COMMAND`, `LD_PRELOAD` or `BASH_ENV` on your runner. For this reason, a prefix that is specific to your application should be used to avoid setting variables that might be used by the runner's tooling. To keep exact env var names, list each field with `key` (and `output-name` if needed) instead.
+
 All values are masked in workflow logs.
 
 ## Naming rules
