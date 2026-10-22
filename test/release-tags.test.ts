@@ -185,7 +185,15 @@ describe('Release workflow: the release PR is updated only after the version tag
 
   test('the release-pr job runs only when the check passed and this run is for the head of the branch', () => {
     expect([prJob.needs].flat()).toEqual(['check-version-tag']);
-    expect(prJob.if).toBe("${{ needs.check-version-tag.outputs.current == 'true' }}");
+    // !cancelled(), not the implicit success(): success() also requires
+    // create-version-tag, which is skipped on every push that is not a
+    // release, to have succeeded, so the release PR would never be updated
+    // between releases.
+    expect(squash(prJob.if)).toBe(
+      squash(`\${{ !cancelled() &&
+          needs.check-version-tag.result == 'success' &&
+          needs.check-version-tag.outputs.current == 'true' }}`),
+    );
     expect(prJob).not.toHaveProperty('continue-on-error');
   });
 
