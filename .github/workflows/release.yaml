@@ -5,32 +5,78 @@
 # so the dist/ committed by contributors on regular PRs (enforced by the
 # required Check dist check) is already the released bundle.
 #
-# When the release PR is merged, release-please creates a DRAFT release and
-# its git tag at the merge commit; the security gate evaluates the GHAS
-# remediation-SLA policy, the bundle is provenance-attested, an SBOM is
-# attached, the floating v{major} / v{major}.{minor} tags are moved, and the
-# release is published. Everything runs as dependent jobs in a SINGLE workflow
-# run on the default GITHUB_TOKEN — no PAT or GitHub App token.
+# When the release PR is merged, release-please creates a DRAFT release at the
+# merge commit and the create-version-tag job creates its git tag; the
+# security gate evaluates the GHAS remediation-SLA policy, the bundle is
+# provenance-attested, an SBOM is attached, the floating v{major} /
+# v{major}.{minor} tags are moved, and the release is published. Everything
+# runs as dependent jobs in a SINGLE workflow run.
 #
-# The tag exists before the gate because force-tag-creation is set in
-# release-please-config.json: GitHub does not create a draft release's tag
-# until it is published, and without the tag release-please cannot find the
-# release boundary and proposes a bogus version bump in the next release PR.
-# The early semver tag is resolvable in `uses:` from the moment it exists,
-# i.e. before the gate passes; only the floating v{major} / v{major}.{minor}
-# tags — the refs consumers are documented to pin — are gated.
+# Tag rulesets. Together they cover every tag in the repository:
+#   - tags (refs/tags/v*.*.*): no actor can move or delete a version tag. No
+#     bypass actors. Only a repository or organisation administrator can
+#     remove this protection, by changing or disabling the ruleset.
+#   - version-tag-creation (refs/tags/v*.*.*): only the App below can create a
+#     version tag. It is a separate ruleset so that the App's bypass covers
+#     creation only; the tags ruleset still stops the App moving or deleting
+#     one.
+#   - floating-tags (every other tag): only the App below can create, move or
+#     delete them.
+# So no GITHUB_TOKEN, in this or any other workflow, can create a version tag
+# or publish a release with a new tag, and immutable releases (a repository
+# setting) lock each tag once its release is published. The release-please job
+# below creates a DRAFT release with GITHUB_TOKEN; a draft does not create its
+# tag.
+#
+# Credentials. There is no PAT.
+#   - Every job uses the default GITHUB_TOKEN, with the permissions each job
+#     declares, except the two tag jobs below.
+#   - The attest job also requests a GitHub OIDC token (id-token: write) to
+#     sign the provenance attestation.
+#   - The tag jobs (create-version-tag and tag-major-minor) use short-lived
+#     tokens from the single-purpose bt-workload-credentials-tagger GitHub
+#     App, the only bypass actor on the version-tag-creation and
+#     floating-tags rulesets. Its client ID (RELEASE_APP_CLIENT_ID) and
+#     private key (RELEASE_APP_PRIVATE_KEY) are held in the `release`
+#     environment, which only deploys from main.
+#   - The bypass belongs to the App, not to the tag jobs. Anyone holding one
+#     of the App's private keys can create version tags, change the floating
+#     tags, and use the App's contents: write access, from anywhere.
+#     Organisation owners and the App's managers can generate further keys,
+#     and keys do not expire. Review the App's keys and managers when auditing
+#     this pipeline.
+#
+# The version tag is created as soon as release-please finishes, in parallel
+# with the gate: GitHub does not create a draft release's tag until it is
+# published, and without the tag release-please cannot find the release
+# boundary and proposes a bogus version bump in the next release PR. For the
+# same reason release-please runs twice: the release-please job creates the
+# draft release, and the release-pr job updates the release PR once the tag
+# exists.
+# release-please's own force-tag-creation option is off because it uses
+# GITHUB_TOKEN, which the version-tag-creation ruleset rejects, and
+# release-please ignores that rejection. The early version tag is resolvable
+# in `uses:` from the moment it exists, i.e. before the gate passes; only the
+# floating v{major} / v{major}.{minor} tags — the refs consumers are
+# documented to pin — are gated.
 #
 # Known limitation: PRs created with the default GITHUB_TOKEN do not trigger
 # other workflows, so the release PR's required checks will not start on their
 # own. Look for an "Approve workflows to run" button on the PR itself.
 #
-# Recovering a stalled release (e.g. the security gate failed): re-running the
-# whole run does not work, because release-please runs again, finds the
-# release already created, and everything downstream is skipped. Instead, fix
-# the cause and have release-please create the release again:
-#   1. Delete the draft release, keeping its tag (gh release delete <tag>).
-#   2. On the merged release PR, replace the "autorelease: tagged" label with
-#      "autorelease: pending".
+# Recovering a stalled release, for example when the security gate failed or
+# the Check version tag job reports that the version tag does not exist. If
+# the version tag was not created, the Check version tag job fails on every
+# push to main, and the release PR is not updated, until the release is
+# recovered. Re-running the whole run does not work, because
+# release-please runs again, finds the release already created, and
+# everything downstream is skipped. Instead, fix the cause and have
+# release-please create the release again:
+#   1. Delete the draft release, if one exists, keeping its tag if it was
+#      created (gh release delete <tag>). create-version-tag accepts a
+#      version tag that already points at the release commit.
+#   2. On the merged release PR, set the "autorelease: pending" label,
+#      removing "autorelease: tagged" if it is there.
 #   3. Merge any change to main. release-please recreates the draft at the
 #      release PR's merge commit and the jobs below run in full.
 name: Release
@@ -66,6 +112,8 @@ jobs:
       major: ${{ steps.release.outputs.major }}
       minor: ${{ steps.release.outputs.minor }}
     steps:
+      # Creates the draft release only. The release PR is updated by the
+      # release-pr job, after the version tag exists.
       - name: Run release-please
         id: release
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
@@ -73,6 +121,243 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
           token: ${{ secrets.GITHUB_TOKEN }}
+          skip-github-pull-request: true
+
+  check-version-tag:
+    name: Check version tag
+    needs: [release-please, create-version-tag]
+    # release-please finds the previous release by its tag. Without the tag it
+    # reads the whole history and proposes a bogus version bump, so in a
+    # release run this waits for create-version-tag, and does not run if that
+    # job fails. On every other push create-version-tag is skipped and this
+    # runs straight away. In every run it then fails if the tag for the
+    # version in the manifest does not exist, for example because
+    # create-version-tag failed in an earlier release run, so that the
+    # release-pr job does not write a bogus release PR. The recovery steps
+    # above fix this, and the next push to main then updates the release PR.
+    # It is a separate job so that its GITHUB_TOKEN can only read.
+    if: >-
+      ${{ !cancelled() &&
+          needs.release-please.result == 'success' &&
+          (needs.create-version-tag.result == 'success' ||
+           needs.create-version-tag.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      current: ${{ steps.check.outputs.current }}
+    steps:
+      - name: Check the released version is tagged
+        id: check
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          # Tested by test/release-tags.test.ts, which runs this script
+          # against a mocked GitHub API.
+          #
+          # release-please reads the manifest at the head of the default
+          # branch, not at the commit that triggered this run. If the branch
+          # has moved on, the run for the newer commit updates the release PR,
+          # so this run sets current=false and the release-pr job is skipped.
+          # Otherwise the manifest is read at the triggering commit, which is
+          # then the commit release-please reads. A push that lands after
+          # this check is handled by that push's own run. Skipping relies on
+          # the newer commit's run reaching this job: if that run does not
+          # start (for example, its commit message contains [skip ci]) or
+          # fails earlier, the release PR is not updated until the next push
+          # to main. No request is retried.
+          script: |
+            const repo = { owner: context.repo.owner, repo: context.repo.repo };
+            const branch = context.payload.repository?.default_branch;
+            const recovery = 'See "Recovering a stalled release" at the top ' +
+              'of .github/workflows/release.yaml. The release PR was not updated.';
+            const httpStatus = (err) => (err.status ? ` (HTTP ${err.status})` : '');
+
+            if (!branch) {
+              throw new Error('The push event has no default branch. The release PR was not updated.');
+            }
+
+            let head;
+            try {
+              ({ data: { object: { sha: head } } } = await github.rest.git.getRef({ ...repo, ref: `heads/${branch}` }));
+            } catch (err) {
+              throw new Error(
+                `Looking up the head of ${branch} failed${httpStatus(err)}. ` +
+                `The release PR was not updated. Details: ${err.message}`,
+                { cause: err },
+              );
+            }
+            if (head !== context.sha) {
+              core.info(
+                `${branch} has moved from ${context.sha} to ${head}. The run ` +
+                `for the newer commit updates the release PR, so this run does not.`
+              );
+              core.setOutput('current', 'false');
+              return;
+            }
+
+            let manifest;
+            try {
+              const { data } = await github.rest.repos.getContent({
+                ...repo, path: '.release-please-manifest.json', ref: context.sha,
+              });
+              manifest = JSON.parse(Buffer.from(data.content, 'base64').toString('utf8'));
+            } catch (err) {
+              throw new Error(
+                `Reading .release-please-manifest.json at ${context.sha} ` +
+                `failed${httpStatus(err)}. The release PR was not updated. ` +
+                `Details: ${err.message}`,
+                { cause: err },
+              );
+            }
+
+            const version = manifest?.['.'];
+            if (typeof version !== 'string' || !/^\d+\.\d+\.\d+$/.test(version)) {
+              throw new Error(
+                `Unexpected version ${JSON.stringify(version)} for "." in ` +
+                `.release-please-manifest.json at ${context.sha}. The release ` +
+                `PR was not updated.`
+              );
+            }
+            const tagName = `v${version}`;
+
+            try {
+              await github.rest.git.getRef({ ...repo, ref: `tags/${tagName}` });
+            } catch (err) {
+              if (err.status === 404) {
+                throw new Error(
+                  `Version tag ${tagName} does not exist, so release-please ` +
+                  `cannot find the ${version} release and would propose a ` +
+                  `bogus version. Either the ${version} release run did not ` +
+                  `create the tag (create-version-tag failed, or the run was ` +
+                  `cancelled), or no release was created for ${version} ` +
+                  `(for example, the merged release PR did not have the ` +
+                  `"autorelease: pending" label). ${recovery}`
+                );
+              }
+              throw new Error(
+                `Looking up tag ${tagName} failed${httpStatus(err)}. The ` +
+                `release PR was not updated. Details: ${err.message}`,
+                { cause: err },
+              );
+            }
+            core.info(`Version tag ${tagName} exists`);
+            core.setOutput('current', 'true');
+
+  release-pr:
+    name: Release PR
+    # check-version-tag confirms the released version is tagged and that this
+    # run's commit is still the head of the default branch.
+    needs: check-version-tag
+    if: ${{ needs.check-version-tag.outputs.current == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Run release-please
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          token: ${{ secrets.GITHUB_TOKEN }}
+          skip-github-release: true
+
+  create-version-tag:
+    name: Create version tag
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Uses the release tagger App's token; see "Tag rulesets" and
+    # "Credentials" at the top of this file. Only the github-script step
+    # receives the token. GITHUB_TOKEN is not used by this job, so it is
+    # granted nothing.
+    environment: release
+    permissions: {}
+    steps:
+      - name: Mint release tagger app token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          # Scoped to this repository (the default) and to contents: write
+          # only. The action's post step asks GitHub to revoke the token when
+          # the job ends; if that single attempt fails, the token stays valid
+          # until it expires, at most one hour after it was created.
+          permission-contents: write
+
+      - name: Create the version tag at the release commit
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          RELEASE_SHA: ${{ needs.release-please.outputs.sha }}
+          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          # Tested by test/release-tags.test.ts, which runs this script
+          # against a mocked GitHub API.
+          #
+          # Creates the tag, or accepts one that already points at the
+          # release commit (a recovery run). Anything else fails the job
+          # without changing any tag. No request is retried.
+          script: |
+            const sha     = process.env.RELEASE_SHA;
+            const tagName = process.env.TAG_NAME;
+            const appSlug = process.env.APP_SLUG;
+            const repo    = { owner: context.repo.owner, repo: context.repo.repo };
+            const httpStatus = (err) => (err.status ? ` (HTTP ${err.status})` : '');
+
+            // Checked before any request is made, as in tag-major-minor.
+            if (!/^[0-9a-f]{40}$/.test(sha ?? '') || !/^v\d+\.\d+\.\d+$/.test(tagName ?? '')) {
+              throw new Error(
+                `Unexpected RELEASE_SHA "${sha}" or TAG_NAME "${tagName}" ` +
+                `from release-please. No tag was created.`
+              );
+            }
+
+            let existing = null;
+            try {
+              ({ data: { object: existing } } = await github.rest.git.getRef({ ...repo, ref: `tags/${tagName}` }));
+            } catch (err) {
+              if (err.status !== 404) {
+                throw new Error(
+                  `Looking up tag ${tagName} failed${httpStatus(err)}. ` +
+                  `Details: ${err.message}`,
+                  { cause: err },
+                );
+              }
+            }
+
+            if (existing !== null) {
+              if (existing.type === 'commit' && existing.sha === sha) {
+                core.info(`Version tag ${tagName} already at ${sha}`);
+                return;
+              }
+              throw new Error(
+                `Version tag ${tagName} already exists and points at ` +
+                `${existing.type} ${existing.sha}, not the release commit ` +
+                `${sha}. No tag was created. Find out who created ` +
+                `${tagName} and what it points at before publishing this ` +
+                `release; consumers pinned to @${tagName} already get it.`
+              );
+            }
+
+            try {
+              await github.rest.git.createRef({ ...repo, ref: `refs/tags/${tagName}`, sha });
+            } catch (err) {
+              const hint = err.status === 422 && /rule/i.test(err.message)
+                ? ` Check that the ${appSlug} app is a bypass actor on the version-tag-creation ruleset.`
+                : '';
+              throw new Error(
+                `Creating version tag ${tagName} at ${sha} ` +
+                `failed${httpStatus(err)}.${hint} Details: ${err.message}`,
+                { cause: err },
+              );
+            }
+            core.info(`Created version tag ${tagName} at ${sha}`);
 
   security-gate:
     name: Security Gate
@@ -168,15 +453,34 @@ jobs:
 
   tag-major-minor:
     name: Move major and minor tags
-    # Gated on security-gate: consumers track @v{major}, so moving the floating
-    # tags is the de facto release and must not happen when the gate fails.
-    needs: [release-please, security-gate]
+    # Gated on security-gate and attest: consumers track @v{major}, so moving
+    # the floating tags is the de facto release and must not happen when the
+    # gate fails or the bundle has no provenance attestation. It also waits
+    # for create-version-tag. The implicit success() in this `if:` is what
+    # enforces that; do not add always().
+    needs: [release-please, create-version-tag, security-gate, attest]
     if: ${{ needs.release-please.outputs.release_created == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    permissions:
-      contents: write
+    # Uses the release tagger App's token; see "Credentials" at the top of
+    # this file for what that App can do and where its key is held. Only the
+    # github-script step receives the token. GITHUB_TOKEN is not used by this
+    # job, so it is granted nothing.
+    environment: release
+    permissions: {}
     steps:
+      - name: Mint release tagger app token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          # Scoped to this repository (the default) and to contents: write
+          # only. The action's post step asks GitHub to revoke the token when
+          # the job ends; if that single attempt fails, the token stays valid
+          # until it expires, at most one hour after it was created.
+          permission-contents: write
+
       - name: Move v{major} and v{major}.{minor} tags to the released commit
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
@@ -184,62 +488,187 @@ jobs:
           TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
           MAJOR_TAG: v${{ needs.release-please.outputs.major }}
           MINOR_TAG: v${{ needs.release-please.outputs.major }}.${{ needs.release-please.outputs.minor }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
         with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          # Tested by test/release-tags.test.ts, which runs this script
+          # against a mocked GitHub API.
+          #
+          # The script only handles the normal case: each floating tag is
+          # missing (first release on its line), already at the release
+          # commit, or behind it. Anything else fails the job before any tag
+          # is changed, and is left to a person to resolve. No request is
+          # retried. After a failure, check the tags, then follow
+          # "Recovering a stalled release" at the top of this file, which
+          # runs the security gate again. Do not use "Re-run failed jobs": it
+          # reuses the earlier security gate result, however old it is.
           script: |
             const sha      = process.env.RELEASE_SHA;
             const tagName  = process.env.TAG_NAME;
             const majorTag = process.env.MAJOR_TAG;
             const minorTag = process.env.MINOR_TAG;
+            const appSlug  = process.env.APP_SLUG;
+            const repo     = { owner: context.repo.owner, repo: context.repo.repo };
 
-            // Move a floating tag to `sha`. If the ref does not exist yet
-            // (first release on this major/minor line), create it instead.
-            // We do not need an annotated tag object here - lightweight tags
-            // are sufficient for consumer pinning (`uses: org/action@v1`)
-            // and they are what google-github-actions and most marketplace
-            // actions publish for their floating refs. The semver tag
-            // (e.g. v1.2.3) created by release-please remains annotated.
-            async function upsertTag(refName) {
-              try {
-                await github.rest.git.updateRef({
-                  owner: context.repo.owner,
-                  repo:  context.repo.repo,
-                  ref:   `tags/${refName}`,
-                  sha:   sha,
-                  force: true,
-                });
-                core.info(`Moved tag ${refName} -> ${sha} (${tagName})`);
-                return;
-              } catch (err) {
-                core.info(
-                  `updateRef failed for ${refName} (${err.message}); ` +
-                  `attempting createRef`
+            // Check the release-please outputs before any request is made.
+            // The App bypasses the rules on every tag outside
+            // refs/tags/v*.*.*, so a malformed name (e.g. "v" when an output
+            // is empty) must never reach the API. Pre-release versions such
+            // as v2.0.0-rc.1 are refused too: release-please is not
+            // configured to produce them.
+            const expected = [
+              ['RELEASE_SHA', sha,      /^[0-9a-f]{40}$/],
+              ['TAG_NAME',    tagName,  /^v\d+\.\d+\.\d+$/],
+              ['MAJOR_TAG',   majorTag, /^v\d+$/],
+              ['MINOR_TAG',   minorTag, /^v\d+\.\d+$/],
+            ];
+            for (const [name, value, pattern] of expected) {
+              if (!pattern.test(value ?? '')) {
+                throw new Error(
+                  `Unexpected ${name} "${value}" from release-please ` +
+                  `(expected ${pattern}). No tag was changed.`
                 );
               }
-
-              // Fall-through path: ref did not exist, create it.
-              // If THIS call also fails the error propagates and fails the job.
-              await github.rest.git.createRef({
-                owner: context.repo.owner,
-                repo:  context.repo.repo,
-                ref:   `refs/tags/${refName}`,
-                sha:   sha,
-              });
-              core.info(`Created tag ${refName} at ${sha} (${tagName})`);
+            }
+            if (!tagName.startsWith(`${minorTag}.`) || !minorTag.startsWith(`${majorTag}.`)) {
+              throw new Error(
+                `TAG_NAME ${tagName}, MINOR_TAG ${minorTag} and MAJOR_TAG ` +
+                `${majorTag} from release-please do not describe the same ` +
+                `version. No tag was changed.`
+              );
             }
 
-            await upsertTag(majorTag);
-            await upsertTag(minorTag);
+            function failed(what, err) {
+              const hint = err.status === 422 && /rule/i.test(err.message)
+                ? ` Check that the ${appSlug} app is a bypass actor on the floating-tags ruleset.`
+                : '';
+              const status = err.status ? ` (HTTP ${err.status})` : '';
+              return new Error(
+                `${what} failed${status}.${hint} ` +
+                `Details: ${err.message}`,
+                { cause: err },
+              );
+            }
+
+            // The commit a tag points at, or null if the tag does not exist.
+            // This workflow and release-please only create lightweight tags,
+            // so an annotated tag was made by hand and is not handled.
+            async function getTagCommit(refName) {
+              let data;
+              try {
+                ({ data } = await github.rest.git.getRef({ ...repo, ref: `tags/${refName}` }));
+              } catch (err) {
+                if (err.status === 404) return null;
+                throw failed(`Looking up tag ${refName}`, err);
+              }
+              if (data.object.type !== 'commit') {
+                throw new Error(
+                  `Tag ${refName} is an annotated tag. Neither this ` +
+                  `workflow nor release-please creates annotated tags, so ` +
+                  `someone created it by hand. Not moving any floating ` +
+                  `tags. Find out who created ${refName} and what it points ` +
+                  `at before publishing this release.`
+                );
+              }
+              return data.object.sha;
+            }
+
+            // A floating tag only ever moves forward: the release commit must
+            // be a descendant of the commit the tag points at now. Otherwise
+            // recovering an older release could move @v{major} back to older
+            // code, because the App bypasses the ruleset's force-push block.
+            async function planTag(refName) {
+              const current = await getTagCommit(refName);
+              if (current === null) return { refName, current, action: 'create' };
+              if (current === sha)  return { refName, current, action: 'none' };
+
+              let status;
+              try {
+                ({ data: { status } } = await github.rest.repos.compareCommitsWithBasehead({
+                  ...repo,
+                  basehead: `${current}...${sha}`,
+                  per_page: 1, // only the status is used
+                }));
+              } catch (err) {
+                throw failed(`Comparing ${refName} (${current}) with ${sha}`, err);
+              }
+              if (status === 'ahead') return { refName, current, action: 'move' };
+
+              throw new Error(
+                `Not moving ${refName}: the release commit ${sha} ` +
+                `(${tagName}) is not ahead of the commit it points at, ` +
+                `${current} (GitHub compare status: ${status}). Floating ` +
+                `tags only move forward. "behind" usually means a newer ` +
+                `release has already moved ${refName}; "diverged" means it ` +
+                `was moved outside this workflow and needs investigating. No ` +
+                `tag was changed.`
+              );
+            }
+
+            async function applyTag({ refName, current, action }) {
+              if (action === 'none') {
+                core.info(`Tag ${refName} already at ${sha} (${tagName})`);
+                return;
+              }
+              const what = action === 'create'
+                ? `Creating tag ${refName} at ${sha}`
+                : `Moving tag ${refName} from ${current} to ${sha}`;
+              try {
+                if (action === 'create') {
+                  await github.rest.git.createRef({ ...repo, ref: `refs/tags/${refName}`, sha });
+                } else {
+                  // No force: GitHub then also refuses anything but a
+                  // forward move, as checked above.
+                  await github.rest.git.updateRef({ ...repo, ref: `tags/${refName}`, sha, force: false });
+                }
+              } catch (err) {
+                throw failed(what, err);
+              }
+              core.info(`${what} (${tagName}): done`);
+            }
+
+            // The version tag must still point at the release commit.
+            // create-version-tag checked this when it created the tag;
+            // checking again here means the floating tags never follow a
+            // version tag that was created or changed some other way, for
+            // example while a tag ruleset was disabled.
+            const versionCommit = await getTagCommit(tagName);
+            if (versionCommit === null) {
+              throw new Error(
+                `Version tag ${tagName} does not exist. The ` +
+                `create-version-tag job creates it before this job runs; ` +
+                `check that job's log. Not moving any floating tags.`
+              );
+            }
+            if (versionCommit !== sha) {
+              throw new Error(
+                `Version tag ${tagName} points at ${versionCommit}, not the ` +
+                `release commit ${sha}, so it was created or changed outside ` +
+                `this workflow. Not moving any floating tags. Find out ` +
+                `who created ${tagName} and what it points at before ` +
+                `publishing this release; consumers pinned to @${tagName} ` +
+                `already get that commit.`
+              );
+            }
+
+            // Check both tags before changing either. Then write the minor
+            // tag first, so that if the second write fails the widely used
+            // @v{major} has not moved yet.
+            const plans = [await planTag(minorTag), await planTag(majorTag)];
+            for (const plan of plans) await applyTag(plan);
 
   publish-release:
     name: Publish release
-    needs: [release-please, security-gate, attest, tag-major-minor, sbom]
+    needs: [release-please, create-version-tag, security-gate, attest, tag-major-minor, sbom]
     # always() prevents upstream "skipped" status from auto-skipping this job;
-    # the explicit result checks ensure we only publish when the gate, the
-    # attestation, and the tag moves all succeeded. The SBOM is best-effort:
-    # it is in `needs` only for ordering and does not block publish.
+    # the explicit result checks ensure we only publish when the version tag,
+    # the gate, the attestation, and the tag moves all succeeded. The SBOM is
+    # best-effort: it is in `needs` only for ordering and does not block
+    # publish.
     if: >-
       ${{ always() &&
           needs.release-please.outputs.release_created == 'true' &&
+          needs.create-version-tag.result == 'success' &&
           needs.security-gate.result == 'success' &&
           needs.attest.result == 'success' &&
           needs.tag-major-minor.result == 'success' }}
