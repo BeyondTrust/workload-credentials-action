@@ -248,8 +248,18 @@ jobs:
     name: Release PR
     # check-version-tag confirms the released version is tagged and that this
     # run's commit is still the head of the default branch.
+    #
+    # !cancelled() is required. Without a status function GitHub adds
+    # success(), which also requires every earlier job in the dependency chain
+    # to have succeeded. create-version-tag is skipped on every push that is
+    # not a release, so this job would then only run in release runs and the
+    # release PR would not be updated between releases. The result check
+    # stops this job when check-version-tag fails or does not run.
     needs: check-version-tag
-    if: ${{ needs.check-version-tag.outputs.current == 'true' }}
+    if: >-
+      ${{ !cancelled() &&
+          needs.check-version-tag.result == 'success' &&
+          needs.check-version-tag.outputs.current == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
