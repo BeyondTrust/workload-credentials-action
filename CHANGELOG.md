@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.4](https://github.com/BeyondTrust/workload-credentials-action/compare/v1.0.3...v1.0.4) (2026-11-10)
+
+
+### Bug Fixes
+
+* **deps:** bump undici to 6.29.1 ([#129](https://github.com/BeyondTrust/workload-credentials-action/issues/129)) ([2acafbb](https://github.com/BeyondTrust/workload-credentials-action/commit/2acafbb6da925c93c61ad86c15d851fbb7eb7a75))
+
 ## [1.0.3](https://github.com/BeyondTrust/workload-credentials-action/compare/v1.0.2...v1.0.3) (2026-10-22)
 
 
